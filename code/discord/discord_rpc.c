@@ -34,6 +34,7 @@ static int discord_last_health = -1;
 static int discord_last_wave = -1;
 static int discord_last_kills = -1;
 static int discord_last_score = -1;
+static int discord_last_weapon = -1;
 
 // Persistent stream framing buffers
 static char incoming_buf[4096];
@@ -125,12 +126,13 @@ static const lookupTable_t CampaignMaps[] = {
     {"siwa", "ET SP - Siwa Oasis"},
     {"ice", "ET SP - Ice"},
     {"warbell", "ET SP - Warbell"},
-    {"sv_oasis", "Survival - Siwa Oasis"},
-    {"sv_goldrush", "Survival - Gold Rush"},
-    {"sv_radar", "Survival - Würzburg Radar"},
-    {"sv_battery", "Survival - Seawall Battery"},
-    {"sv_fueldump", "Survival - Fuel Dump"},
-    {"sv_railgun", "Survival - Rail Gun"},
+    {"sv_oasis", "ET SP Survival - Siwa Oasis"},
+    {"sv_goldrush", "ET SP Survival - Gold Rush"},
+    {"sv_radar", "ET SP Survival - Würzburg Radar North"},
+    {"sv_radar2", "ET SP Survival - Würzburg Radar South"},
+    {"sv_battery", "ET SP Survival - Seawall Battery"},
+    {"sv_fueldump", "ET SP Survival - Fuel Dump"},
+    {"sv_railgun", "ET SP Survival - Rail Gun"},
 
     // --- The Dark Army: Uprising ---
     {"dayprologue", "Dark Army - Prologue (Day)"},
@@ -222,6 +224,111 @@ static const char *GetFriendlyMapName(const char *mapname) {
     return "Prologue";
 
   return NULL;
+}
+
+static const char *GetFriendlyWeaponName(int weap) {
+  switch (weap) {
+  case 1:
+    return "Knife"; // WP_KNIFE
+  case 2:
+    return "Luger"; // WP_LUGER
+  case 3:
+    return "Silenced Luger"; // WP_SILENCER
+  case 4:
+    return "Colt"; // WP_COLT
+  case 5:
+    return "TT-33"; // WP_TT33
+  case 6:
+    return "Revolver"; // WP_REVOLVER
+  case 7:
+    return "HDM"; // WP_HDM
+  case 8:
+    return "Dual Colts"; // WP_AKIMBO
+  case 9:
+    return "Dual TT-33"; // WP_DUAL_TT33
+  case 10:
+    return "MP40"; // WP_MP40
+  case 11:
+    return "Thompson"; // WP_THOMPSON
+  case 12:
+    return "Sten"; // WP_STEN
+  case 13:
+    return "PPSh-41"; // WP_PPSH
+  case 14:
+    return "MP34"; // WP_MP34
+  case 15:
+    return "Mauser Rifle"; // WP_MAUSER
+  case 16:
+    return "Garand"; // WP_GARAND
+  case 17:
+    return "Mosin-Nagant"; // WP_MOSIN
+  case 18:
+    return "De Lisle"; // WP_DELISLE
+  case 19:
+    return "M1 Garand"; // WP_M1GARAND
+  case 20:
+    return "Gewehr 43"; // WP_G43
+  case 21:
+    return "M1941 Johnson"; // WP_M1941
+  case 22:
+    return "StG 44"; // WP_MP44
+  case 23:
+    return "FG42"; // WP_FG42
+  case 24:
+    return "BAR"; // WP_BAR
+  case 25:
+    return "M97 Trench"; // WP_M97
+  case 26:
+    return "Auto-5"; // WP_AUTO5
+  case 27:
+    return "M30 Drilling"; // WP_M30
+  case 28:
+    return "Browning M1919"; // WP_BROWNING
+  case 29:
+    return "MG42"; // WP_MG42M
+  case 30:
+    return "Panzerfaust"; // WP_PANZERFAUST
+  case 31:
+    return "Flamethrower"; // WP_FLAMETHROWER
+  case 32:
+    return "Venom Gun"; // WP_VENOM
+  case 33:
+    return "Tesla Gun"; // WP_TESLA
+  case 34:
+    return "Grenade launcher"; // WP_GRENADE_LAUNCHER
+  case 35:
+    return "Pineapple grenade"; // WP_GRENADE_PINEAPPLE
+  case 36:
+    return "Dynamite"; // WP_DYNAMITE
+  case 37:
+    return "Dynamite"; // WP_DYNAMITE_ENG
+  case 38:
+    return "Airstrike"; // WP_AIRSTRIKE
+  case 39:
+    return "Artillery"; // WP_ARTY
+  case 40:
+    return "Poison Gas"; // WP_POISONGAS
+  case 41:
+    return "Smoke canister"; // WP_SMOKETRAIL
+  case 42:
+    return "Holy Cross"; // WP_HOLYCROSS
+  case 43:
+    return "Smoke Bomb"; // WP_SMOKE_BOMB
+  case 44:
+    return "Scoped Mauser"; // WP_SNIPERRIFLE
+  case 45:
+    return "Snooper Rifle"; // WP_SNOOPERSCOPE
+  case 46:
+    return "Scoped De Lisle"; // WP_DELISLESCOPE
+  case 47:
+    return "Scoped M1941"; // WP_M1941SCOPE
+  case 48:
+    return "Scoped FG42"; // WP_FG42SCOPE
+  case 49:
+    return "M7 grenade launcher"; // WP_M7
+  default:
+    return NULL;
+  }
 }
 
 static const char *GetModDisplayName(const char *fs_game) {
@@ -522,8 +629,17 @@ static void Discord_Update(void) {
       }
     }
 
+    char weap_str[64] = "";
+    if (clc.state == CA_ACTIVE && cl.snap.valid) {
+      int active_weap = cl.snap.ps.weapon;
+      const char *weap_name = GetFriendlyWeaponName(active_weap);
+      if (weap_name) {
+        snprintf(weap_str, sizeof(weap_str), " %s", weap_name);
+      }
+    }
+
     // Build components array safely
-    char parts[4][96];
+    char parts[5][96];
     int num_parts = 0;
 
     // Part 1: Difficulty / Mode Name
@@ -549,7 +665,12 @@ static void Discord_Update(void) {
       Q_strncpyz(parts[num_parts++], health_str, sizeof(parts[0]));
     }
 
-    // Part 4: Level Mission Statistics
+    // Part 4: Active Weapon Info
+    if (weap_str[0]) {
+      Q_strncpyz(parts[num_parts++], weap_str, sizeof(parts[0]));
+    }
+
+    // Part 5: Level Mission Statistics
     if (stats_str[0]) {
       Q_strncpyz(parts[num_parts++], stats_str, sizeof(parts[0]));
     }
@@ -676,6 +797,12 @@ void Discord_RunFrame(void) {
         discord_last_score = cur_score;
         changed = qtrue;
       }
+
+      int cur_weap = cl.snap.ps.weapon;
+      if (cur_weap != discord_last_weapon) {
+        discord_last_weapon = cur_weap;
+        changed = qtrue;
+      }
     }
 
     if (changed) {
@@ -692,6 +819,7 @@ void Discord_RunFrame(void) {
       discord_last_wave = -1;
       discord_last_kills = -1;
       discord_last_score = -1;
+      discord_last_weapon = -1;
       start_time = 0;
       changed = qtrue;
     }
