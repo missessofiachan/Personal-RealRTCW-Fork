@@ -1931,6 +1931,7 @@ Q3OBJ = \
   $(B)/client/cl_ui.o \
   $(B)/client/cl_avi.o \
   $(B)/client/discord_rpc.o \
+  $(B)/client/discord_data.o \
   \
   $(B)/client/cm_load.o \
   $(B)/client/cm_patch.o \

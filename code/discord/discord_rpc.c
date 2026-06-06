@@ -1,6 +1,7 @@
 #include "discord_rpc.h"
-#include <stdint.h>
+
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,11 +13,23 @@
 #else
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <pthread.h>
+#endif
+
+#ifndef ARCH_STRING
+#if defined(__x86_64__) || defined(_M_X64)
+#define ARCH_STRING "x86_64"
+#elif defined(__i386__) || defined(_M_IX86)
+#define ARCH_STRING "x86"
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#define ARCH_STRING "arm64"
+#else
+#define ARCH_STRING "x86_64"
+#endif
 #endif
 
 #include "../client/client.h"
@@ -48,13 +61,15 @@ static char discord_mapname[64] = "";
 static char discord_skill[64] = "";
 static char discord_display[64] = "";
 static char discord_cs_message[128] = ""; // CS_MESSAGE (worldspawn map title)
-static char discord_cs_missionstats[128] = ""; // CS_MISSIONSTATS (live level stats)
+static char discord_cs_missionstats[128] =
+    "";                               // CS_MISSIONSTATS (live level stats)
 static char discord_fs_game[64] = ""; // fs_game (active mod folder name)
 static int discord_needs_update = 0;
 static time_t next_allowed_update_time = 0; // Anti-spam throttling timer
 static time_t start_time = 0;
 
-// Dynamic state-tracking variables to prevent redundant parsing/spamming on main thread
+// Dynamic state-tracking variables to prevent redundant parsing/spamming on
+// main thread
 static int discord_last_health = -1;
 static int discord_last_wave = -1;
 static int discord_last_kills = -1;
@@ -152,7 +167,8 @@ static int Discord_WriteAll(const void *buf, size_t len) {
     return 0;
 
   DWORD written = 0;
-  if (!WriteFile(discord_pipe, buf, (DWORD)len, &written, NULL) || written != len) {
+  if (!WriteFile(discord_pipe, buf, (DWORD)len, &written, NULL) ||
+      written != len) {
     discord_log("Discord: Write error occurred.\n");
     Discord_ShutdownSocket();
     return 0;
@@ -199,13 +215,15 @@ static int Discord_Connect(void) {
   char pipe_path[128];
   for (int i = 0; i < 10; i++) {
     snprintf(pipe_path, sizeof(pipe_path), "\\\\.\\pipe\\discord-ipc-%d", i);
-    HANDLE pipe = CreateFileA(pipe_path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    HANDLE pipe = CreateFileA(pipe_path, GENERIC_READ | GENERIC_WRITE, 0, NULL,
+                              OPEN_EXISTING, 0, NULL);
     if (pipe != INVALID_HANDLE_VALUE) {
       discord_pipe = pipe;
       discord_conn_state = DISCORD_STATE_CONNECTED_WAIT_READY;
       incoming_len = 0;
 
-      const char *handshake_json = "{\"v\":1,\"client_id\":\"1500118711774744737\"}";
+      const char *handshake_json =
+          "{\"v\":1,\"client_id\":\"1500118711774744737\"}";
       uint32_t header[2];
       header[0] = 0;
       header[1] = (uint32_t)strlen(handshake_json);
@@ -280,7 +298,8 @@ static void Discord_Pump(void) {
     return;
 
   DWORD bytesRead = 0;
-  if (!ReadFile(discord_pipe, incoming_buf + incoming_len, sizeof(incoming_buf) - incoming_len - 1, &bytesRead, NULL)) {
+  if (!ReadFile(discord_pipe, incoming_buf + incoming_len,
+                sizeof(incoming_buf) - incoming_len - 1, &bytesRead, NULL)) {
     discord_log("Discord: Read error.\n");
     Discord_ShutdownSocket();
     return;
@@ -323,7 +342,8 @@ static void Discord_Pump(void) {
     discord_log("Discord reply (op %u, len %u): %s\n", op, payload_len,
                 payload);
 
-    if (discord_conn_state == DISCORD_STATE_CONNECTED_WAIT_READY && strstr(payload, "\"evt\":\"READY\"")) {
+    if (discord_conn_state == DISCORD_STATE_CONNECTED_WAIT_READY &&
+        strstr(payload, "\"evt\":\"READY\"")) {
       discord_conn_state = DISCORD_STATE_READY;
       discord_log("Discord: Ready event received.\n");
     }
@@ -377,7 +397,8 @@ void *Discord_WorkerThread(void *arg) {
         }
       }
     } else {
-      // If disconnected, don't spin, drop pending update state so we don't block
+      // If disconnected, don't spin, drop pending update state so we don't
+      // block
       if (has_update) {
         discord_log("Discord: Dropped update (not connected to client).\n");
       }
