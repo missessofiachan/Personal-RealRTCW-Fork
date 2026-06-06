@@ -17,36 +17,39 @@ typedef struct {
 static const lookupTable_t CampaignMaps[] = {
     // --- Main Campaign ---
     {"intro", "Prologue"},
-    {"escape1", "Ominous Rumors"},
-    {"escape2", "The Escape"},
+    {"escape1", "Escape!"},
+    {"escape2", "Castle Keep"},
     {"tram", "Tram Ride"},
-    {"village1", "Wulfburg"},
-    {"village2", "Ruined Village"},
+    {"village1", "Village"},
     {"crypt1", "Catacombs"},
     {"crypt2", "Crypt"},
     {"church", "The Defiled Church"},
-    {"boss1", "The Defiled Church (Boss)"},
+    {"boss1", "Tomb"},
     {"forest", "Forest Compound"},
     {"rocket", "Rocket Base"},
     {"baseout", "Radar Installation"},
     {"assault", "Air Base Assault"},
     {"sfm", "Kugelstadt"},
-    {"factory", "The Ruined Factory"},
+    {"smf", "Kugelstadt"},
+    {"factory", "The Bombed Factory"},
     {"trainyard", "The Trainyards"},
+    {"trainyards", "The Trainyards"},
     {"swerve", "Secret Weapons Facility"},
-    {"hideout", "Ice Station Cobra"},
-    {"chateau", "Chateau"},
-    {"dark", "Dark Descent"},
+    {"swf", "Secret Weapons Facility"},
+    {"norway", "Ice Station Norway"},
+    {"xlabs", "X-Labs"},
+    {"boss2", "Super Soldier"},
+    {"dam", "Bramburg Dam"},
+    {"village2", "Paderborn Village"},
+    {"chateau", "Chateau Schufstaffel"},
+    {"dark", "Unhallowed Ground"},
     {"dig", "The Dig"},
     {"castle", "Return to Castle Wolfenstein"},
     {"end", "Heinrich"},
-    {"boss2", "Heinrich (Boss)"},
-    {"dam", "X-Labs"},
+    {"hideout", "Ice Station Cobra"},
     {"cobb", "Chateau Cobb"},
     {"keep", "Castle Keep"},
-    {"xlabs", "X-Labs"},
     {"fendrich", "Fendrich's Office"},
-    {"norway", "Norway"},
 
     // --- Malta Campaign ---
     {"malta_0", "Malta - Prologue"},
@@ -71,16 +74,16 @@ static const lookupTable_t CampaignMaps[] = {
     {"sv_safe", "Survival - Safe House"},
 
     // --- Cursed Sands / EE Expansion ---
-    {"ee1", "Cursed Sands (Ras el-Hadid)"},
-    {"ee2", "Cursed Sands (The Excavation)"},
-    {"ee3", "Cursed Sands (The Temple)"},
-    {"ee4", "Cursed Sands (The Fortress)"},
-    {"ee5", "Cursed Sands (The Pyramid)"},
-    {"sv_ee1", "Survival - Ras el-Hadid"},
-    {"sv_ee2", "Survival - The Excavation"},
-    {"sv_ee3", "Survival - The Temple"},
-    {"sv_ee4", "Survival - The Fortress"},
-    {"sv_ee5", "Survival - The Pyramid"},
+    {"ee1", "Cursed Sands - Ras el-Hadid"},
+    {"ee2", "Cursed Sands - The Excavation"},
+    {"ee3", "Cursed Sands - The Temple"},
+    {"ee4", "Cursed Sands - The Fortress"},
+    {"ee5", "Cursed Sands - The Pyramid"},
+    {"sv_ee1", "Cursed Sands Survival - Ras el-Hadid"},
+    {"sv_ee2", "Cursed Sands Survival - The Excavation"},
+    {"sv_ee3", "Cursed Sands Survival - The Temple"},
+    {"sv_ee4", "Cursed Sands Survival - The Fortress"},
+    {"sv_ee5", "Cursed Sands Survival - The Pyramid"},
 
     // --- Enemy Territory Single Player ---
     {"oasis", "ET SP - Siwa Oasis"},
@@ -255,68 +258,125 @@ static const lookupTable_t ModNames[] = {
 
 static const char *GetFriendlyWeaponName(int weap) {
   switch (weap) {
-    case 1:  return "Knife";
-    case 2:  return "Luger";
-    case 3:  return "Silenced Luger";
-    case 4:  return "Colt";
-    case 5:  return "TT-33";
-    case 6:  return "Revolver";
-    case 7:  return "HDM";
-    case 8:  return "Dual Colts";
-    case 9:  return "Dual TT-33";
-    case 10: return "MP40";
-    case 11: return "Thompson";
-    case 12: return "Sten";
-    case 13: return "PPSh-41";
-    case 14: return "MP34";
-    case 15: return "Mauser Rifle";
-    case 16: return "Garand";
-    case 17: return "Mosin-Nagant";
-    case 18: return "De Lisle";
-    case 19: return "M1 Garand";
-    case 20: return "Gewehr 43";
-    case 21: return "M1941 Johnson";
-    case 22: return "StG 44";
-    case 23: return "FG42";
-    case 24: return "BAR";
-    case 25: return "M97 Trench";
-    case 26: return "Auto-5";
-    case 27: return "M30 Drilling";
-    case 28: return "Browning M1919";
-    case 29: return "MG42";
-    case 30: return "Panzerfaust";
-    case 31: return "Flamethrower";
-    case 32: return "Venom Gun";
-    case 33: return "Tesla Gun";
-    case 34: return "Grenade launcher";
-    case 35: return "Pineapple grenade";
-    case 36: return "Dynamite";
-    case 37: return "Dynamite";
-    case 38: return "Airstrike";
-    case 39: return "Artillery";
-    case 40: return "Poison Gas";
-    case 41: return "Smoke canister";
-    case 42: return "Holy Cross";
-    case 43: return "Smoke Bomb";
-    case 44: return "Scoped Mauser";
-    case 45: return "Snooper Rifle";
-    case 46: return "Scoped De Lisle";
-    case 47: return "Scoped M1941";
-    case 48: return "Scoped FG42";
-    case 49: return "M7 grenade launcher";
-    default: return NULL;
+  case 1:
+    return "Knife";
+  case 2:
+    return "Luger";
+  case 3:
+    return "Silenced Luger";
+  case 4:
+    return "Colt";
+  case 5:
+    return "TT-33";
+  case 6:
+    return "Revolver";
+  case 7:
+    return "HDM";
+  case 8:
+    return "Dual Colts";
+  case 9:
+    return "Dual TT-33";
+  case 10:
+    return "MP40";
+  case 11:
+    return "Thompson";
+  case 12:
+    return "Sten";
+  case 13:
+    return "PPSh-41";
+  case 14:
+    return "MP34";
+  case 15:
+    return "Mauser Rifle";
+  case 16:
+    return "Garand";
+  case 17:
+    return "Mosin-Nagant";
+  case 18:
+    return "De Lisle";
+  case 19:
+    return "M1 Garand";
+  case 20:
+    return "Gewehr 43";
+  case 21:
+    return "M1941 Johnson";
+  case 22:
+    return "StG 44";
+  case 23:
+    return "FG42";
+  case 24:
+    return "BAR";
+  case 25:
+    return "M97 Trench";
+  case 26:
+    return "Auto-5";
+  case 27:
+    return "M30 Drilling";
+  case 28:
+    return "Browning M1919";
+  case 29:
+    return "MG42";
+  case 30:
+    return "Panzerfaust";
+  case 31:
+    return "Flamethrower";
+  case 32:
+    return "Venom Gun";
+  case 33:
+    return "Tesla Gun";
+  case 34:
+    return "Grenade launcher";
+  case 35:
+    return "Pineapple grenade";
+  case 36:
+    return "Dynamite";
+  case 37:
+    return "Dynamite";
+  case 38:
+    return "Airstrike";
+  case 39:
+    return "Artillery";
+  case 40:
+    return "Poison Gas";
+  case 41:
+    return "Smoke canister";
+  case 42:
+    return "Holy Cross";
+  case 43:
+    return "Smoke Bomb";
+  case 44:
+    return "Scoped Mauser";
+  case 45:
+    return "Snooper Rifle";
+  case 46:
+    return "Scoped De Lisle";
+  case 47:
+    return "Scoped M1941";
+  case 48:
+    return "Scoped FG42";
+  case 49:
+    return "M7 grenade launcher";
+  default:
+    return NULL;
   }
 }
 
 static const char *GetFriendlySkillName(int val) {
   switch (val) {
-  case 0:  return "Can I play, Daddy?";
-  case 1:  return "Don't hurt me.";
-  case 2:  return "Bring 'em on!";
-  case 3:  return "I am Death incarnate!";
-  case 4:  return "Realism";
-  case 5:  return "Survival";
-  default: return "Unknown";
+  case 0:
+    return "Can I play, Daddy?";
+  case 1:
+    return "Don't hurt me.";
+  case 2:
+    return "Bring 'em on!";
+  case 3:
+    return "I am Death incarnate!";
+  case 4:
+    return "Realism";
+  case 5:
+    return "Survival";
+  default:
+    return "Unknown";
   }
 }
 

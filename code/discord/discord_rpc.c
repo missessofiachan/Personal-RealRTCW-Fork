@@ -1,56 +1,79 @@
 #include "discord_rpc.h"
 #include <stdint.h>
-
-#ifndef WIN32
-#include "../client/client.h"
-#include <errno.h>
-#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#ifdef WIN32
+#include <windows.h>
+#define getpid GetCurrentProcessId
+#else
+#include <errno.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <time.h>
 #include <unistd.h>
+#include <pthread.h>
+#endif
 
+#include "../client/client.h"
+
+// Connection states managed exclusively by the background thread
+typedef enum {
+  DISCORD_STATE_DISCONNECTED,
+  DISCORD_STATE_CONNECTED_WAIT_READY,
+  DISCORD_STATE_READY
+} discordState_t;
+
+#ifdef WIN32
+static HANDLE discord_pipe = INVALID_HANDLE_VALUE;
+static HANDLE worker_thread = NULL;
+static CRITICAL_SECTION payload_mutex;
+#else
 static int discord_fd = -1;
+static pthread_t worker_thread;
+static pthread_mutex_t payload_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
+static discordState_t discord_conn_state = DISCORD_STATE_DISCONNECTED;
+static char pending_payload[1024] = "";
+static qboolean pending_update = qfalse;
+static qboolean thread_active = qfalse;
+static time_t next_discord_connect_time = 0;
+
 static char discord_mapname[64] = "";
 static char discord_skill[64] = "";
 static char discord_display[64] = "";
 static char discord_cs_message[128] = ""; // CS_MESSAGE (worldspawn map title)
-static char discord_cs_missionstats[128] =
-    "";                               // CS_MISSIONSTATS (live level stats)
+static char discord_cs_missionstats[128] = ""; // CS_MISSIONSTATS (live level stats)
 static char discord_fs_game[64] = ""; // fs_game (active mod folder name)
 static int discord_needs_update = 0;
-static int discord_ready = 0;
-static time_t next_discord_connect_time = 0;
 static time_t next_allowed_update_time = 0; // Anti-spam throttling timer
 static time_t start_time = 0;
 
-// Dynamic state-tracking variables to prevent redundant parsing/spamming
+// Dynamic state-tracking variables to prevent redundant parsing/spamming on main thread
 static int discord_last_health = -1;
 static int discord_last_wave = -1;
 static int discord_last_kills = -1;
 static int discord_last_score = -1;
 static int discord_last_weapon = -1;
 
-// Persistent stream framing buffers
+// Persistent stream framing buffers for background thread
 static char incoming_buf[4096];
 static int incoming_len = 0;
 
 #include "discord_data.h"
 
 static void discord_log(const char *fmt, ...) {
+  char buf[2048];
   va_list args;
   va_start(args, fmt);
-  FILE *f = fopen("discord_rpc.log", "a");
-  if (f) {
-    vfprintf(f, fmt, args);
-    fclose(f);
-  }
+  Q_vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
+  Com_DPrintf("[Discord] %s", buf);
 }
 
 static void ExtractMapBaseName(const char *in, char *out, int maxlen) {
@@ -80,17 +103,62 @@ static void StripColorCodes(const char *in, char *out, int maxlen) {
   out[j] = '\0';
 }
 
-void Discord_Shutdown(void) {
+static void EscapeJsonString(const char *in, char *out, int maxlen) {
+  int j = 0;
+  for (int i = 0; in[i] && j < maxlen - 5; i++) {
+    if (in[i] == '"') {
+      out[j++] = '\\';
+      out[j++] = '"';
+    } else if (in[i] == '\\') {
+      out[j++] = '\\';
+      out[j++] = '\\';
+    } else if (in[i] == '\n') {
+      out[j++] = '\\';
+      out[j++] = 'n';
+    } else if (in[i] == '\r') {
+      out[j++] = '\\';
+      out[j++] = 'r';
+    } else if (in[i] == '\t') {
+      out[j++] = '\\';
+      out[j++] = 't';
+    } else {
+      out[j++] = in[i];
+    }
+  }
+  out[j] = '\0';
+}
+
+static void Discord_ShutdownSocket(void) {
+#ifdef WIN32
+  if (discord_pipe != INVALID_HANDLE_VALUE) {
+    CloseHandle(discord_pipe);
+    discord_pipe = INVALID_HANDLE_VALUE;
+    discord_log("Discord: Connection closed.\n");
+  }
+#else
   if (discord_fd >= 0) {
     close(discord_fd);
     discord_fd = -1;
-    discord_ready = 0;
-    incoming_len = 0;
     discord_log("Discord: Connection closed.\n");
   }
+#endif
+  discord_conn_state = DISCORD_STATE_DISCONNECTED;
+  incoming_len = 0;
 }
 
 static int Discord_WriteAll(const void *buf, size_t len) {
+#ifdef WIN32
+  if (discord_pipe == INVALID_HANDLE_VALUE)
+    return 0;
+
+  DWORD written = 0;
+  if (!WriteFile(discord_pipe, buf, (DWORD)len, &written, NULL) || written != len) {
+    discord_log("Discord: Write error occurred.\n");
+    Discord_ShutdownSocket();
+    return 0;
+  }
+  return 1;
+#else
   if (discord_fd < 0)
     return 0;
 
@@ -105,23 +173,53 @@ static int Discord_WriteAll(const void *buf, size_t len) {
         continue;
       }
       discord_log("Discord: Write error occurred (%d).\n", errno);
-      Discord_Shutdown();
+      Discord_ShutdownSocket();
       return 0;
     } else if (sent == 0) {
       discord_log("Discord: Connection lost during send operation.\n");
-      Discord_Shutdown();
+      Discord_ShutdownSocket();
       return 0;
     }
     total_sent += sent;
   }
   return 1;
+#endif
 }
 
 static int Discord_Connect(void) {
-  if (discord_fd >= 0)
+  if (discord_conn_state != DISCORD_STATE_DISCONNECTED)
     return 1;
 
-  discord_log("Discord: Connecting...\n");
+  time_t cur = time(NULL);
+  if (cur < next_discord_connect_time)
+    return 0;
+
+#ifdef WIN32
+  discord_log("Discord: Connecting (Windows Named Pipe)...\n");
+  char pipe_path[128];
+  for (int i = 0; i < 10; i++) {
+    snprintf(pipe_path, sizeof(pipe_path), "\\\\.\\pipe\\discord-ipc-%d", i);
+    HANDLE pipe = CreateFileA(pipe_path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (pipe != INVALID_HANDLE_VALUE) {
+      discord_pipe = pipe;
+      discord_conn_state = DISCORD_STATE_CONNECTED_WAIT_READY;
+      incoming_len = 0;
+
+      const char *handshake_json = "{\"v\":1,\"client_id\":\"1500118711774744737\"}";
+      uint32_t header[2];
+      header[0] = 0;
+      header[1] = (uint32_t)strlen(handshake_json);
+
+      if (!Discord_WriteAll(header, sizeof(header)) ||
+          !Discord_WriteAll(handshake_json, header[1])) {
+        return 0;
+      }
+      discord_log("Discord: Connected successfully to %s\n", pipe_path);
+      return 1;
+    }
+  }
+#else
+  discord_log("Discord: Connecting (Linux Unix Socket)...\n");
   const char *dirs[] = {getenv("XDG_RUNTIME_DIR"), getenv("TMPDIR"),
                         getenv("TMP"), getenv("TEMP"), "/tmp"};
   struct sockaddr_un addr;
@@ -131,7 +229,6 @@ static int Discord_Connect(void) {
   for (int d = 0; d < 5; d++) {
     if (!dirs[d] || !dirs[d][0])
       continue;
-    discord_log("Discord: Searching in %s...\n", dirs[d]);
     for (int i = 0; i < 10; i++) {
       snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/discord-ipc-%d",
                dirs[d], i);
@@ -141,7 +238,7 @@ static int Discord_Connect(void) {
 
       if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
         discord_fd = fd;
-        discord_ready = 0;
+        discord_conn_state = DISCORD_STATE_CONNECTED_WAIT_READY;
         incoming_len = 0;
 
         const char *handshake_json =
@@ -160,29 +257,54 @@ static int Discord_Connect(void) {
       close(fd);
     }
   }
-  discord_log("Discord: Failed to find any active Discord IPC socket.\n");
+#endif
+
+  next_discord_connect_time = cur + 5;
+  discord_log("Discord: Failed to find any active Discord IPC path.\n");
   return 0;
 }
 
 static void Discord_Pump(void) {
-  if (discord_fd < 0)
+  if (discord_conn_state == DISCORD_STATE_DISCONNECTED)
     return;
 
+#ifdef WIN32
+  DWORD avail = 0;
+  if (!PeekNamedPipe(discord_pipe, NULL, 0, NULL, &avail, NULL)) {
+    discord_log("Discord: Pipe error during Peek.\n");
+    Discord_ShutdownSocket();
+    return;
+  }
+
+  if (avail == 0)
+    return;
+
+  DWORD bytesRead = 0;
+  if (!ReadFile(discord_pipe, incoming_buf + incoming_len, sizeof(incoming_buf) - incoming_len - 1, &bytesRead, NULL)) {
+    discord_log("Discord: Read error.\n");
+    Discord_ShutdownSocket();
+    return;
+  }
+
+  incoming_len += bytesRead;
+#else
   ssize_t r = recv(discord_fd, incoming_buf + incoming_len,
                    sizeof(incoming_buf) - incoming_len - 1, MSG_DONTWAIT);
   if (r < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK)
       return;
     discord_log("Discord: Read error %d.\n", errno);
-    Discord_Shutdown();
+    Discord_ShutdownSocket();
     return;
   } else if (r == 0) {
     discord_log("Discord: EOF received (Discord closed).\n");
-    Discord_Shutdown();
+    Discord_ShutdownSocket();
     return;
   }
 
   incoming_len += r;
+#endif
+
   incoming_buf[incoming_len] = '\0';
 
   while (incoming_len >= 8) {
@@ -201,9 +323,8 @@ static void Discord_Pump(void) {
     discord_log("Discord reply (op %u, len %u): %s\n", op, payload_len,
                 payload);
 
-    if (!discord_ready && strstr(payload, "\"evt\":\"READY\"")) {
-      discord_ready = 1;
-      discord_needs_update = 1;
+    if (discord_conn_state == DISCORD_STATE_CONNECTED_WAIT_READY && strstr(payload, "\"evt\":\"READY\"")) {
+      discord_conn_state = DISCORD_STATE_READY;
       discord_log("Discord: Ready event received.\n");
     }
 
@@ -216,21 +337,108 @@ static void Discord_Pump(void) {
   }
 }
 
+#ifdef WIN32
+DWORD WINAPI Discord_WorkerThread(LPVOID lpParam) {
+#else
+void *Discord_WorkerThread(void *arg) {
+#endif
+  discord_log("Discord: Background worker thread started.\n");
+  while (thread_active) {
+    char active_payload[1024] = "";
+    qboolean has_update = qfalse;
+
+    // Mutex protected swap of pending payload
+#ifdef WIN32
+    EnterCriticalSection(&payload_mutex);
+#else
+    pthread_mutex_lock(&payload_mutex);
+#endif
+    if (pending_update) {
+      Q_strncpyz(active_payload, pending_payload, sizeof(active_payload));
+      pending_update = qfalse;
+      has_update = qtrue;
+    }
+#ifdef WIN32
+    LeaveCriticalSection(&payload_mutex);
+#else
+    pthread_mutex_unlock(&payload_mutex);
+#endif
+
+    // Handle background connection and dispatching
+    if (Discord_Connect()) {
+      Discord_Pump();
+      if (has_update && discord_conn_state == DISCORD_STATE_READY) {
+        uint32_t header[2];
+        header[0] = 1;
+        header[1] = (uint32_t)strlen(active_payload);
+        if (Discord_WriteAll(header, sizeof(header)) &&
+            Discord_WriteAll(active_payload, header[1])) {
+          discord_log("Discord: Rich Presence update dispatched to client.\n");
+        }
+      }
+    } else {
+      // If disconnected, don't spin, drop pending update state so we don't block
+      if (has_update) {
+        discord_log("Discord: Dropped update (not connected to client).\n");
+      }
+    }
+
+#ifdef WIN32
+    Sleep(50);
+#else
+    usleep(50000);
+#endif
+  }
+
+  Discord_ShutdownSocket();
+  discord_log("Discord: Background worker thread terminated.\n");
+  return 0;
+}
+
+void Discord_Init(void) {
+  if (thread_active)
+    return;
+
+  thread_active = qtrue;
+  pending_update = qfalse;
+  pending_payload[0] = '\0';
+  next_discord_connect_time = 0;
+  discord_conn_state = DISCORD_STATE_DISCONNECTED;
+
+#ifdef WIN32
+  InitializeCriticalSection(&payload_mutex);
+  worker_thread = CreateThread(NULL, 0, Discord_WorkerThread, NULL, 0, NULL);
+#else
+  pthread_mutex_init(&payload_mutex, NULL);
+  pthread_create(&worker_thread, NULL, Discord_WorkerThread, NULL);
+#endif
+}
+
+void Discord_Shutdown(void) {
+  if (!thread_active)
+    return;
+
+  thread_active = qfalse;
+
+#ifdef WIN32
+  if (worker_thread != NULL) {
+    WaitForSingleObject(worker_thread, 1000);
+    CloseHandle(worker_thread);
+    worker_thread = NULL;
+  }
+  DeleteCriticalSection(&payload_mutex);
+#else
+  pthread_join(worker_thread, NULL);
+  pthread_mutex_destroy(&payload_mutex);
+#endif
+}
+
 static void Discord_Update(void) {
   if (!discord_needs_update)
     return;
 
   time_t cur_time = time(NULL);
   if (cur_time < next_allowed_update_time) {
-    return;
-  }
-
-  if (!Discord_Connect()) {
-    discord_log("Discord: Update deferred (not connected).\n");
-    return;
-  }
-  if (!discord_ready) {
-    discord_log("Discord: Update deferred (not ready yet).\n");
     return;
   }
 
@@ -380,6 +588,12 @@ static void Discord_Update(void) {
              "\"timestamps\":{\"start\":%lld},", (long long)start_time);
   }
 
+  // Escape details and state string for safe JSON construction
+  char escaped_details[256];
+  char escaped_state[256];
+  EscapeJsonString(details, escaped_details, sizeof(escaped_details));
+  EscapeJsonString(state, escaped_state, sizeof(escaped_state));
+
   char payload[1024];
   snprintf(payload, sizeof(payload),
            "{"
@@ -398,23 +612,30 @@ static void Discord_Update(void) {
            "},"
            "\"nonce\":\"1\""
            "}",
-           (int)getpid(), details, state, timestamp_json);
+           (int)getpid(), escaped_details, escaped_state, timestamp_json);
 
-  discord_log("Discord: Sending update (details: '%s', state: '%s')\n", details,
-              state);
-
-  uint32_t header[2];
-  header[0] = 1;
-  header[1] = (uint32_t)strlen(payload);
-
-  Discord_WriteAll(header, sizeof(header));
-  Discord_WriteAll(payload, header[1]);
+  // Push new payload to worker thread
+#ifdef WIN32
+  EnterCriticalSection(&payload_mutex);
+#else
+  pthread_mutex_lock(&payload_mutex);
+#endif
+  Q_strncpyz(pending_payload, payload, sizeof(pending_payload));
+  pending_update = qtrue;
+#ifdef WIN32
+  LeaveCriticalSection(&payload_mutex);
+#else
+  pthread_mutex_unlock(&payload_mutex);
+#endif
 }
-
-void Discord_Init(void) {}
 
 void Discord_RunFrame(void) {
   qboolean changed = qfalse;
+
+  // Initialize background thread on the first run frame if not already running
+  if (!thread_active) {
+    Discord_Init();
+  }
 
   // GLOBAL MOD CHECKING: Always monitor active mod directory, even at main menu
   const char *fsgame_val = Cvar_VariableString("fs_game");
@@ -460,7 +681,7 @@ void Discord_RunFrame(void) {
       changed = qtrue;
     }
 
-    // CRITICAL IMPROVEMENT: Monitor real-time player data frame changes
+    // MONITOR REAL-TIME PLAYER DATA CHANGES
     if (clc.state == CA_ACTIVE && cl.snap.valid) {
       int cur_health = cl.snap.ps.stats[STAT_HEALTH];
       if (cur_health < 0)
@@ -519,21 +740,7 @@ void Discord_RunFrame(void) {
     }
   }
 
-  Discord_Pump();
-
-  time_t cur = time(NULL);
-  if (discord_fd < 0 && cur > next_discord_connect_time) {
-    next_discord_connect_time = cur + 5;
-    discord_needs_update = 1;
-  }
-
   if (discord_needs_update) {
     Discord_Update();
   }
 }
-
-#else
-void Discord_Init(void) {}
-void Discord_RunFrame(void) {}
-void Discord_Shutdown(void) {}
-#endif
