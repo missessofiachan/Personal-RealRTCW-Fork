@@ -218,7 +218,8 @@ const lookupTable_t CampaignMaps[] = {
     {"sp_beach", "Beach Assault"},
 
     // --- Into the Eagle's Nest ---
-    {"antarktida", "Into the Eagle's Nest - Antarctica"}};
+    {"antarktida", "Into the Eagle's Nest - Antarctica"}
+};
 
 // Unified modification folder lookup table
 const lookupTable_t ModNames[] = {
@@ -240,164 +241,175 @@ const lookupTable_t ModNames[] = {
     {"2872954732", "Into the Eagle's Nest"},
     {"3116640063", "Vendetta 3"},
     {"3289129216", "RealRTCW Remastered Textures"},
-    {"3693642344", "Enhanced Weapons: Remastered"}};
+    {"3693642344", "Enhanced Weapons: Remastered"}
+};
 
 // Automate count computations via memory footprint metrics
 static const size_t NumCampaignMaps =
     sizeof(CampaignMaps) / sizeof(CampaignMaps[0]);
 static const size_t NumModNames = sizeof(ModNames) / sizeof(ModNames[0]);
 
-const char *GetFriendlyWeaponName(int weap) {
-  switch (weap) {
-  case 1:
-    return "Knife";
-  case 2:
-    return "Luger";
-  case 3:
-    return "Silenced Luger";
-  case 4:
-    return "Colt";
-  case 5:
-    return "TT-33";
-  case 6:
-    return "Revolver";
-  case 7:
-    return "HDM";
-  case 8:
-    return "Dual Colts";
-  case 9:
-    return "Dual TT-33";
-  case 10:
-    return "MP40";
-  case 11:
-    return "Thompson";
-  case 12:
-    return "Sten";
-  case 13:
-    return "PPSh-41";
-  case 14:
-    return "MP34";
-  case 15:
-    return "Mauser Rifle";
-  case 16:
-    return "Garand";
-  case 17:
-    return "Mosin-Nagant";
-  case 18:
-    return "De Lisle";
-  case 19:
-    return "M1 Garand";
-  case 20:
-    return "Gewehr 43";
-  case 21:
-    return "M1941 Johnson";
-  case 22:
-    return "StG 44";
-  case 23:
-    return "FG42";
-  case 24:
-    return "BAR";
-  case 25:
-    return "M97 Trench";
-  case 26:
-    return "Auto-5";
-  case 27:
-    return "M30 Drilling";
-  case 28:
-    return "Browning M1919";
-  case 29:
-    return "MG42";
-  case 30:
-    return "Panzerfaust";
-  case 31:
-    return "Flamethrower";
-  case 32:
-    return "Venom Gun";
-  case 33:
-    return "Tesla Gun";
-  case 34:
-    return "Grenade launcher";
-  case 35:
-    return "Pineapple grenade";
-  case 36:
-    return "Dynamite";
-  case 37:
-    return "Dynamite";
-  case 38:
-    return "Airstrike";
-  case 39:
-    return "Artillery";
-  case 40:
-    return "Poison Gas";
-  case 41:
-    return "Smoke canister";
-  case 42:
-    return "Holy Cross";
-  case 43:
-    return "Smoke Bomb";
-  case 44:
-    return "Scoped Mauser";
-  case 45:
-    return "Snooper Rifle";
-  case 46:
-    return "Scoped De Lisle";
-  case 47:
-    return "Scoped M1941";
-  case 48:
-    return "Scoped FG42";
-  case 49:
-    return "M7 grenade launcher";
-  default:
-    return "Unknown Weapon"; // Safe non-NULL fallback
-  }
-}
-
-const char *GetFriendlySkillName(int val) {
-  switch (val) {
-  case 0:
-    return "Can I play, Daddy?";
-  case 1:
-    return "Don't hurt me.";
-  case 2:
-    return "Bring 'em on!";
-  case 3:
-    return "I am Death incarnate!";
-  case 4:
-    return "Realism";
-  case 5:
-    return "Survival";
-  default:
-    return "Unknown Difficulty";
-  }
-}
-
-const char *GetModDisplayName(const char *fs_game) {
-  if (!fs_game || !fs_game[0] || strcasecmp(fs_game, "main") == 0)
-    return "Main Campaign"; // Avoid returning NULL or empty string markers
-
-  for (size_t i = 0; i < NumModNames; i++) {
-    if (strcasecmp(fs_game, ModNames[i].internal_name) == 0) {
-      return ModNames[i].display_name;
+const char* GetFriendlyWeaponName(int weap)
+{
+    switch (weap)
+    {
+    case 1:
+        return "Knife";
+    case 2:
+        return "Luger";
+    case 3:
+        return "Silenced Luger";
+    case 4:
+        return "Colt";
+    case 5:
+        return "TT-33";
+    case 6:
+        return "Revolver";
+    case 7:
+        return "HDM";
+    case 8:
+        return "Dual Colts";
+    case 9:
+        return "Dual TT-33";
+    case 10:
+        return "MP40";
+    case 11:
+        return "Thompson";
+    case 12:
+        return "Sten";
+    case 13:
+        return "PPSh-41";
+    case 14:
+        return "MP34";
+    case 15:
+        return "Mauser Rifle";
+    case 16:
+        return "Garand";
+    case 17:
+        return "Mosin-Nagant";
+    case 18:
+        return "De Lisle";
+    case 19:
+        return "M1 Garand";
+    case 20:
+        return "Gewehr 43";
+    case 21:
+        return "M1941 Johnson";
+    case 22:
+        return "StG 44";
+    case 23:
+        return "FG42";
+    case 24:
+        return "BAR";
+    case 25:
+        return "M97 Trench";
+    case 26:
+        return "Auto-5";
+    case 27:
+        return "M30 Drilling";
+    case 28:
+        return "Browning M1919";
+    case 29:
+        return "MG42";
+    case 30:
+        return "Panzerfaust";
+    case 31:
+        return "Flamethrower";
+    case 32:
+        return "Venom Gun";
+    case 33:
+        return "Tesla Gun";
+    case 34:
+        return "Grenade launcher";
+    case 35:
+        return "Pineapple grenade";
+    case 36:
+        return "Dynamite";
+    case 37:
+        return "Dynamite";
+    case 38:
+        return "Airstrike";
+    case 39:
+        return "Artillery";
+    case 40:
+        return "Poison Gas";
+    case 41:
+        return "Smoke canister";
+    case 42:
+        return "Holy Cross";
+    case 43:
+        return "Smoke Bomb";
+    case 44:
+        return "Scoped Mauser";
+    case 45:
+        return "Snooper Rifle";
+    case 46:
+        return "Scoped De Lisle";
+    case 47:
+        return "Scoped M1941";
+    case 48:
+        return "Scoped FG42";
+    case 49:
+        return "M7 grenade launcher";
+    default:
+        return "Unknown Weapon"; // Safe non-NULL fallback
     }
-  }
-
-  return fs_game;
 }
 
-const char *GetFriendlyMapName(const char *mapname) {
-  if (!mapname || !mapname[0])
-    return "Main Menu";
-
-  for (size_t i = 0; i < NumCampaignMaps; i++) {
-    if (strcasecmp(mapname, CampaignMaps[i].internal_name) == 0) {
-      return CampaignMaps[i].display_name;
+const char* GetFriendlySkillName(int val)
+{
+    switch (val)
+    {
+    case 0:
+        return "Can I play, Daddy?";
+    case 1:
+        return "Don't hurt me.";
+    case 2:
+        return "Bring 'em on!";
+    case 3:
+        return "I am Death incarnate!";
+    case 4:
+        return "Realism";
+    case 5:
+        return "Survival";
+    default:
+        return "Unknown Difficulty";
     }
-  }
+}
 
-  if (strncasecmp(mapname, "cutscene", 8) == 0)
-    return "Watching a Cutscene";
-  if (strncasecmp(mapname, "day_", 4) == 0)
-    return "Prologue";
+const char* GetModDisplayName(const char* fs_game)
+{
+    if (!fs_game || !fs_game[0] || strcasecmp(fs_game, "main") == 0)
+        return "Main Campaign"; // Avoid returning NULL or empty string markers
 
-  return "Custom Map"; // Protected string to feed safely into Discord RPC
+    for (size_t i = 0; i < NumModNames; i++)
+    {
+        if (strcasecmp(fs_game, ModNames[i].internal_name) == 0)
+        {
+            return ModNames[i].display_name;
+        }
+    }
+
+    return fs_game;
+}
+
+const char* GetFriendlyMapName(const char* mapname)
+{
+    if (!mapname || !mapname[0])
+        return "Main Menu";
+
+    for (size_t i = 0; i < NumCampaignMaps; i++)
+    {
+        if (strcasecmp(mapname, CampaignMaps[i].internal_name) == 0)
+        {
+            return CampaignMaps[i].display_name;
+        }
+    }
+
+    if (strncasecmp(mapname, "cutscene", 8) == 0)
+        return "Watching a Cutscene";
+    if (strncasecmp(mapname, "day_", 4) == 0)
+        return "Prologue";
+
+    return "Custom Map"; // Protected string to feed safely into Discord RPC
 }
