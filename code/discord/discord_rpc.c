@@ -83,6 +83,10 @@ static int incoming_len = 0;
 
 #include "discord_data.h"
 
+#ifdef __GNUC__
+static void discord_log(const char* fmt, ...) __attribute__ ((format (gnu_printf, 1, 2)));
+#endif
+
 static void discord_log(const char* fmt, ...)
 {
     char buf[2048];
@@ -532,8 +536,8 @@ static void Discord_Update(void)
     discord_needs_update = 0;
     next_allowed_update_time = cur_time + 4;
 
-    char details[128] = "";
-    char state[128] = "";
+    char details[256] = "";
+    char state[256] = "";
     char timestamp_json[64] = "";
 
     // DYNAMIC MAIN MENU CHECK
@@ -719,7 +723,10 @@ static void Discord_Update(void)
         for (int i = 0; i < num_parts; i++)
         {
             Q_strcat(state, sizeof(state), parts[i]);
-            Q_strcat(state, sizeof(state), " • ");
+            if (i < num_parts - 1)
+            {
+                Q_strcat(state, sizeof(state), " • ");
+            }
         }
     }
 

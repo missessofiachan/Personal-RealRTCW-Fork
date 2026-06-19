@@ -254,103 +254,103 @@ const char* GetFriendlyWeaponName(int weap)
     switch (weap)
     {
     case 1:
-        return "Knife";
+        return "🔪 Knife";
     case 2:
-        return "Luger";
+        return "🔫 Luger";
     case 3:
-        return "Silenced Luger";
+        return "🤫 Silenced Luger";
     case 4:
-        return "Colt";
+        return "🔫 Colt";
     case 5:
-        return "TT-33";
+        return "🔫 TT-33";
     case 6:
-        return "Revolver";
+        return "🔫 Revolver";
     case 7:
-        return "HDM";
+        return "🤫 HDM";
     case 8:
-        return "Dual Colts";
+        return "🔫 Dual Colts";
     case 9:
-        return "Dual TT-33";
+        return "🔫 Dual TT-33";
     case 10:
-        return "MP40";
+        return "🔫 MP40";
     case 11:
-        return "Thompson";
+        return "🔫 Thompson";
     case 12:
-        return "Sten";
+        return "🤫 Sten";
     case 13:
-        return "PPSh-41";
+        return "🔫 PPSh-41";
     case 14:
-        return "MP34";
+        return "🔫 MP34";
     case 15:
-        return "Mauser Rifle";
+        return "🔫 Mauser Rifle";
     case 16:
-        return "Garand";
+        return "🔫 Garand";
     case 17:
-        return "Mosin-Nagant";
+        return "🔫 Mosin-Nagant";
     case 18:
-        return "De Lisle";
+        return "🤫 De Lisle";
     case 19:
-        return "M1 Garand";
+        return "🔫 M1 Garand";
     case 20:
-        return "Gewehr 43";
+        return "🔫 Gewehr 43";
     case 21:
-        return "M1941 Johnson";
+        return "🔫 M1941 Johnson";
     case 22:
-        return "StG 44";
+        return "🔫 StG 44";
     case 23:
-        return "FG42";
+        return "🔫 FG42";
     case 24:
-        return "BAR";
+        return "🔫 BAR";
     case 25:
-        return "M97 Trench";
+        return "🔫 M97 Trench";
     case 26:
-        return "Auto-5";
+        return "🔫 Auto-5";
     case 27:
-        return "M30 Drilling";
+        return "🔫 M30 Drilling";
     case 28:
-        return "Browning M1919";
+        return "🔫 Browning M1919";
     case 29:
-        return "MG42";
+        return "🔫 MG42";
     case 30:
-        return "Panzerfaust";
+        return "🚀 Panzerfaust";
     case 31:
-        return "Flamethrower";
+        return "🔥 Flamethrower";
     case 32:
-        return "Venom Gun";
+        return "💥 Venom Gun";
     case 33:
-        return "Tesla Gun";
+        return "⚡ Tesla Gun";
     case 34:
-        return "Grenade launcher";
+        return "🚀 Grenade launcher";
     case 35:
-        return "Pineapple grenade";
+        return "💣 Pineapple grenade";
     case 36:
-        return "Dynamite";
+        return "🧨 Dynamite";
     case 37:
-        return "Dynamite";
+        return "🧨 Dynamite";
     case 38:
-        return "Airstrike";
+        return "✈️ Airstrike";
     case 39:
-        return "Artillery";
+        return "💥 Artillery";
     case 40:
-        return "Poison Gas";
+        return "☣️ Poison Gas";
     case 41:
-        return "Smoke canister";
+        return "💨 Smoke canister";
     case 42:
-        return "Holy Cross";
+        return "✝️ Holy Cross";
     case 43:
-        return "Smoke Bomb";
+        return "💨 Smoke Bomb";
     case 44:
-        return "Scoped Mauser";
+        return "🎯 Scoped Mauser";
     case 45:
-        return "Snooper Rifle";
+        return "🎯 Snooper Rifle";
     case 46:
-        return "Scoped De Lisle";
+        return "🎯 Scoped De Lisle";
     case 47:
-        return "Scoped M1941";
+        return "🎯 Scoped M1941";
     case 48:
-        return "Scoped FG42";
+        return "🎯 Scoped FG42";
     case 49:
-        return "M7 grenade launcher";
+        return "🚀 M7 grenade launcher";
     default:
         return "Unknown Weapon"; // Safe non-NULL fallback
     }

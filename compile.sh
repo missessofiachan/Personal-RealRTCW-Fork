@@ -107,7 +107,7 @@ fi
 
 if [ "$CLEAN_BUILD" = true ]; then
     echo -e "${YELLOW}Clean build requested. Cleaning build artifacts...${NC}"
-    run_build_cmd make clean
+    run_build_cmd make STEAM=1 clean
 fi
 
 # Determine parallel build job factor
