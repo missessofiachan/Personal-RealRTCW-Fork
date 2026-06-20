@@ -36,6 +36,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "cg_local.h"
 #include "../ui/ui_shared.h"
+#include "cg_flashlight.h"
 
 displayContextDef_t cgDC;
 
@@ -685,8 +686,8 @@ void CG_UpdateCvars( void ) {
 	trap_Cvar_Set( "cg_uinfo", va( "%d %d %d",
 								   // Client Flags
 								   (
-									   ( ( cg_autoReload.integer > 0 ) ? CGF_AUTORELOAD : 0 ) 
-									   // Add more in here, as needed
+									   ( ( cg_autoReload.integer > 0 ) ? CGF_AUTORELOAD : 0 ) |
+									   ( cg_flashlightOn ? CGF_FLASHLIGHT : 0 )
 								   ),
 
  								   // Timenudge

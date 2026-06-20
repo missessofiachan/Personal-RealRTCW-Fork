@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 // cg_view.c -- setup all the parameters (position, angle, etc)
 // for a 3D rendering
 #include "cg_local.h"
+#include "cg_flashlight.h"
 
 //========================
 extern int notebookModel;
@@ -1738,6 +1739,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	// let the client system know what our weapon, holdable item and zoom settings are
 	trap_SetUserCmdValue( cg.weaponSelect, cg.holdableSelect, cg.zoomSensitivity, cg.cld, cg.isZoomed, cg.aaStrength, cg.aaDYaw, cg.aaDPitch );
+
+	// Call dynamic flashlight dlight generation
+	CG_Flashlight_Frame();
 
 	// actually issue the rendering calls
 	CG_DrawActive( stereoView );

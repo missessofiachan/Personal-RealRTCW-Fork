@@ -36,6 +36,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "cg_local.h"
 #include "../ui/ui_shared.h"
+#include "cg_flashlight.h"
 
 
 
@@ -618,6 +619,7 @@ typedef struct {
 } consoleCommand_t;
 
 static consoleCommand_t commands[] = {
+	{"flashlight", CG_Flashlight_Toggle_f},
 	{"testgun", CG_TestGun_f},
 	{"testmodel", CG_TestModel_f},
 	{"nextframe", CG_TestModelNextFrame_f},

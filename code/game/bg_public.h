@@ -273,6 +273,7 @@ typedef enum {
 
 // autoreload. Client flags for server processing
 #define CGF_AUTORELOAD      0x01
+#define CGF_FLASHLIGHT      0x02
 
 // RealRTCW. Data used both in client and server
 typedef struct

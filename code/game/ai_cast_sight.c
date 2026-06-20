@@ -263,24 +263,8 @@ qboolean AICast_CheckVisibility( gentity_t *srcent, gentity_t *destent ) {
 	if ( !destent->aiCharacter && level.lastLoadTime && ( level.lastLoadTime > level.time - 2000 ) && !vis->visible_timestamp ) {
 		return qfalse;
 	}
-	// set the FOV
-	fov = cs->attributes[FOV] * aiStateFovScales[cs->aiState];
-	if ( !fov ) { // assume it's a player, give them a generic fov
-		fov = 180;
-	}
-	if ( cs->aiFlags & AIFL_ZOOMING ) {
-		fov *= 0.8;
-	} else {
-		if ( cs->lastEnemy >= 0 ) {   // they've already been in a fight, so give them a very large fov
-			if ( fov < 270 ) {
-				fov = 270;
-			}
-		}
-	}
-	// RF, if they were visible last check, then give us a full FOV, since we are aware of them
-	if ( cs->aiState >= AISTATE_ALERT && vis->visible_timestamp == vis->lastcheck_timestamp ) {
-		fov = 360;
-	}
+
+	// Calculate eye positions, direction, and distance first so they are initialized
 	//calculate middle of bounding box
 	VectorAdd( destent->r.mins, destent->r.maxs, middle );
 	VectorScale( middle, 0.5, middle );
@@ -320,9 +304,62 @@ qboolean AICast_CheckVisibility( gentity_t *srcent, gentity_t *destent ) {
 	vectoangles( dir, entangles );
 	//
 	dist = VectorLength( dir );
-	//
-	// alertness is visible range
-	if ( cs->bs && dist > cs->attributes[ALERTNESS] ) {
+
+	// set the FOV
+	fov = cs->attributes[FOV] * aiStateFovScales[cs->aiState];
+	float maxDist = cs->attributes[ALERTNESS];
+
+	qboolean playerHasFlashlight = ( destent->client && ( destent->client->pers.clientFlags & CGF_FLASHLIGHT ) );
+	if ( playerHasFlashlight ) {
+		qboolean aiLooksAtPlayer = AICast_InFieldOfVision( viewangles, fov, entangles );
+		if ( aiLooksAtPlayer ) {
+			// Player has a flashlight on and AI is looking towards them.
+			// Increased visibility makes them detectable from twice as far (at least 800 units for WWII).
+			float boostDist = cs->attributes[ALERTNESS] * 2.0f;
+			if ( boostDist < 800.0f ) {
+				boostDist = 800.0f;
+			}
+			maxDist = boostDist;
+		} else {
+			// AI is looking away. Check if player is shining flashlight directly at the AI.
+			vec3_t playerForward, playerToAi;
+			float dot = 0.0f;
+			AngleVectors( destent->client->ps.viewangles, playerForward, NULL, NULL );
+			VectorSubtract( eye, middle, playerToAi );
+			float playerToAiDist = VectorLength( playerToAi );
+			if ( playerToAiDist > 0.1f ) {
+				VectorNormalize( playerToAi );
+				dot = DotProduct( playerForward, playerToAi );
+			}
+			if ( playerToAiDist < 600.0f && dot > 0.866f ) {
+				// Player is pointing flashlight directly at the AI's back/body within beam range (600 units).
+				fov = 360; // AI notices the beam hitting them/floor in front of them
+				maxDist = 600.0f;
+			} else if ( dist < 250.0f ) {
+				// General ambient spill of flashlight illuminates the room, alerting nearby AI from behind.
+				fov = 360;
+				maxDist = 250.0f;
+			}
+		}
+	} else if ( !fov ) { // assume it's a player, give them a generic fov
+		fov = 180;
+	}
+
+	if ( cs->aiFlags & AIFL_ZOOMING ) {
+		fov *= 0.8;
+	} else {
+		if ( cs->lastEnemy >= 0 ) {   // they've already been in a fight, so give them a very large fov
+			if ( fov < 270 ) {
+				fov = 270;
+			}
+		}
+	}
+	// RF, if they were visible last check, then give us a full FOV, since we are aware of them
+	if ( cs->aiState >= AISTATE_ALERT && vis->visible_timestamp == vis->lastcheck_timestamp ) {
+		fov = 360;
+	}
+
+	if ( cs->bs && dist > maxDist ) {
 		return qfalse;
 	}
 	// check FOV
