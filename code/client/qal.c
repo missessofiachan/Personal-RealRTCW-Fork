@@ -62,6 +62,7 @@ LPALSOURCEF qalSourcef;
 LPALSOURCE3F qalSource3f;
 LPALSOURCEFV qalSourcefv;
 LPALSOURCEI qalSourcei;
+LPALSOURCE3I qalSource3i;
 LPALGETSOURCEF qalGetSourcef;
 LPALGETSOURCE3F qalGetSource3f;
 LPALGETSOURCEFV qalGetSourcefv;
@@ -106,6 +107,19 @@ LPALCCAPTURECLOSEDEVICE qalcCaptureCloseDevice;
 LPALCCAPTURESTART qalcCaptureStart;
 LPALCCAPTURESTOP qalcCaptureStop;
 LPALCCAPTURESAMPLES qalcCaptureSamples;
+
+/* EFX functions */
+LPALGENEFFECTS qalGenEffects = NULL;
+LPALDELETEEFFECTS qalDeleteEffects = NULL;
+LPALISEFFECT qalIsEffect = NULL;
+LPALEFFECTI qalEffecti = NULL;
+LPALEFFECTF qalEffectf = NULL;
+LPALEFFECTFV qalEffectfv = NULL;
+LPALGENAUXILIARYEFFECTSLOTS qalGenAuxiliaryEffectSlots = NULL;
+LPALDELETEAUXILIARYEFFECTSLOTS qalDeleteAuxiliaryEffectSlots = NULL;
+LPALAUXILIARYEFFECTSLOTI qalAuxiliaryEffectSloti = NULL;
+LPALAUXILIARYEFFECTSLOTF qalAuxiliaryEffectSlotf = NULL;
+LPALAUXILIARYEFFECTSLOTFV qalAuxiliaryEffectSlotfv = NULL;
 
 static void *OpenALLib = NULL;
 
@@ -180,6 +194,7 @@ qboolean QAL_Init(const char *libname)
 	qalSource3f = GPA("alSource3f");
 	qalSourcefv = GPA("alSourcefv");
 	qalSourcei = GPA("alSourcei");
+	qalSource3i = GPA("alSource3i");
 	qalGetSourcef = GPA("alGetSourcef");
 	qalGetSource3f = GPA("alGetSource3f");
 	qalGetSourcefv = GPA("alGetSourcefv");
@@ -279,6 +294,7 @@ void QAL_Shutdown( void )
 	qalSource3f = NULL;
 	qalSourcefv = NULL;
 	qalSourcei = NULL;
+	qalSource3i = NULL;
 	qalGetSourcef = NULL;
 	qalGetSource3f = NULL;
 	qalGetSourcefv = NULL;
@@ -323,11 +339,41 @@ void QAL_Shutdown( void )
 	qalcCaptureStart = NULL;
 	qalcCaptureStop = NULL;
 	qalcCaptureSamples = NULL;
+
+	/* Reset EFX functions */
+	qalGenEffects = NULL;
+	qalDeleteEffects = NULL;
+	qalIsEffect = NULL;
+	qalEffecti = NULL;
+	qalEffectf = NULL;
+	qalEffectfv = NULL;
+	qalGenAuxiliaryEffectSlots = NULL;
+	qalDeleteAuxiliaryEffectSlots = NULL;
+	qalAuxiliaryEffectSloti = NULL;
+	qalAuxiliaryEffectSlotf = NULL;
+	qalAuxiliaryEffectSlotfv = NULL;
+}
+
+void QAL_InitEFX(void) {
+	qalGenEffects = (LPALGENEFFECTS)qalGetProcAddress("alGenEffects");
+	qalDeleteEffects = (LPALDELETEEFFECTS)qalGetProcAddress("alDeleteEffects");
+	qalIsEffect = (LPALISEFFECT)qalGetProcAddress("alIsEffect");
+	qalEffecti = (LPALEFFECTI)qalGetProcAddress("alEffecti");
+	qalEffectf = (LPALEFFECTF)qalGetProcAddress("alEffectf");
+	qalEffectfv = (LPALEFFECTFV)qalGetProcAddress("alEffectfv");
+	qalGenAuxiliaryEffectSlots = (LPALGENAUXILIARYEFFECTSLOTS)qalGetProcAddress("alGenAuxiliaryEffectSlots");
+	qalDeleteAuxiliaryEffectSlots = (LPALDELETEAUXILIARYEFFECTSLOTS)qalGetProcAddress("alDeleteAuxiliaryEffectSlots");
+	qalAuxiliaryEffectSloti = (LPALAUXILIARYEFFECTSLOTI)qalGetProcAddress("alAuxiliaryEffectSloti");
+	qalAuxiliaryEffectSlotf = (LPALAUXILIARYEFFECTSLOTF)qalGetProcAddress("alAuxiliaryEffectSlotf");
+	qalAuxiliaryEffectSlotfv = (LPALAUXILIARYEFFECTSLOTFV)qalGetProcAddress("alAuxiliaryEffectSlotfv");
 }
 #else
 qboolean QAL_Init(const char *libname)
 {
 	return qtrue;
+}
+void QAL_InitEFX(void)
+{
 }
 void QAL_Shutdown( void )
 {

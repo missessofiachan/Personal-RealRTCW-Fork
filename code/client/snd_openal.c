@@ -28,6 +28,7 @@
 #ifdef USE_OPENAL
 
 #include "qal.h"
+#include "snd_efx.h"
 
 // Console variables specific to OpenAL
 cvar_t *s_alPrecache;
@@ -45,6 +46,8 @@ cvar_t *s_alInputDevice;
 cvar_t *s_alAvailableDevices;
 cvar_t *s_alAvailableInputDevices;
 cvar_t *s_alTalkAnims;
+cvar_t *s_alReverbPreset;
+cvar_t *s_alReverb;
 
 static qboolean enumeration_ext = qfalse;
 static qboolean enumeration_all_ext = qfalse;
@@ -1272,6 +1275,7 @@ static void S_AL_SrcSetup(srcHandle_t src, sfxHandle_t sfx, alSrcPriority_t prio
     qalSourcei(curSource->alSource, AL_SOURCE_RELATIVE, AL_FALSE);
     qalSourcef(curSource->alSource, AL_ROLLOFF_FACTOR, s_alRolloff->value);
   }
+  S_EFX_AttachSource(curSource->alSource);
 }
 
 /*
@@ -2995,12 +2999,27 @@ void S_AL_Update( void )
     s_alDopplerSpeed->modified = qfalse;
   }
 
+  if (s_alReverb->modified || s_alReverbPreset->modified)
+  {
+    if (s_alReverb->integer)
+    {
+      S_EFX_SetPreset(s_alReverbPreset->integer);
+    }
+    else
+    {
+      S_EFX_SetPreset(0);
+    }
+    s_alReverb->modified = qfalse;
+    s_alReverbPreset->modified = qfalse;
+  }
+
   // Clear the modified flags on the other cvars
   s_alGain->modified = qfalse;
   s_volume->modified = qfalse;
   s_musicVolume->modified = qfalse;
   s_alMinDistance->modified = qfalse;
   s_alRolloff->modified = qfalse;
+  s_alReverb->modified = qfalse;
 }
 
 /*
@@ -3130,6 +3149,7 @@ void S_AL_Shutdown( void )
   S_AL_SrcShutdown( );
   S_AL_BufferShutdown( );
 
+  S_EFX_Shutdown();
   qalcDestroyContext(alContext);
   qalcCloseDevice(alDevice);
 
@@ -3188,6 +3208,8 @@ qboolean S_AL_Init( soundInterface_t *si )
   s_alRolloff = Cvar_Get( "s_alRolloff", "1.3", CVAR_ARCHIVE);
   s_alGraceDistance = Cvar_Get("s_alGraceDistance", "512", CVAR_ARCHIVE);
   s_alTalkAnims = Cvar_Get("s_alTalkAnims", "160", CVAR_ARCHIVE);
+  s_alReverbPreset = Cvar_Get("s_alReverbPreset", "0", 0);
+  s_alReverb = Cvar_Get("s_alReverb", "1", CVAR_ARCHIVE);
 
   s_alDriver = Cvar_Get( "s_alDriver", ALDRIVER_DEFAULT, CVAR_LATCH | CVAR_PROTECTED );
 
@@ -3288,7 +3310,12 @@ qboolean S_AL_Init( soundInterface_t *si )
       }
 
       // Create OpenAL context
-      alContext = qalcCreateContext( alDevice, NULL );
+      if ( qalcIsExtensionPresent( alDevice, "ALC_EXT_EFX" ) ) {
+        ALCint attribs[3] = { ALC_MAX_AUXILIARY_SENDS, 2, 0 };
+        alContext = qalcCreateContext( alDevice, attribs );
+      } else {
+        alContext = qalcCreateContext( alDevice, NULL );
+      }
       if( !alContext )
       {
         QAL_Shutdown( );
@@ -3303,6 +3330,7 @@ qboolean S_AL_Init( soundInterface_t *si )
       // Initialize sources, buffers, music
       S_AL_BufferInit( );
       S_AL_SrcInit( );
+      S_EFX_Init( );
 
       // Print this for informational purposes
       Com_Printf( "Allocated %d sources.\n", srcCount);

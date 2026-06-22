@@ -1532,6 +1532,105 @@ extern void CG_SetupDlightstyles( void );
 
 /*
 =================
+CG_UpdateAutomaticReverb
+=================
+*/
+static void CG_UpdateAutomaticReverb( void ) {
+	static int lastUpdateTime = 0;
+	static int lastPreset = -1;
+	trace_t tr;
+	vec3_t end;
+	int preset;
+	float height;
+
+	char buf[16];
+
+	// Throttle execution to every 100ms
+	if ( cg.time - lastUpdateTime < 100 ) {
+		return;
+	}
+	lastUpdateTime = cg.time;
+
+	trap_Cvar_VariableStringBuffer( "s_alReverb", buf, sizeof( buf ) );
+	if ( atoi( buf ) != 1 ) {
+		return;
+	}
+
+	if ( !cg.snap || cg.snap->ps.stats[STAT_HEALTH] <= 0 || cg.cameraMode ) {
+		return;
+	}
+
+	// Trace straight up
+	VectorCopy( cg.refdef.vieworg, end );
+	end[2] += 4096.0f;
+
+	CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, end, cg.predictedPlayerState.clientNum, MASK_SOLID );
+
+	if ( tr.fraction >= 1.0f || ( tr.surfaceFlags & SURF_SKY ) ) {
+		preset = 0; // Outdoors
+	} else {
+		char mapname[64];
+		qboolean isCrypt = qfalse;
+		qboolean isSewer = qfalse;
+		qboolean isDepot = qfalse;
+
+		trap_Cvar_VariableStringBuffer( "mapname", mapname, sizeof( mapname ) );
+		if ( strstr( mapname, "crypt" ) || strstr( mapname, "church" ) || strstr( mapname, "tomb" ) ) {
+			isCrypt = qtrue;
+		} else if ( strstr( mapname, "sewer" ) || strstr( mapname, "swr" ) || strstr( mapname, "sub" ) ) {
+			isSewer = qtrue;
+		} else if ( strstr( mapname, "depot" ) || strstr( mapname, "factory" ) || strstr( mapname, "tram" ) ) {
+			isDepot = qtrue;
+		}
+
+		height = tr.fraction * 4096.0f;
+		if ( height > 600.0f ) {
+			if ( isCrypt ) {
+				preset = 4; // Crypt
+			} else if ( isDepot ) {
+				preset = 7; // Depot
+			} else {
+				preset = 3; // Large Hall
+			}
+		} else if ( height > 250.0f ) {
+			if ( isSewer ) {
+				preset = 6; // Sewer
+			} else {
+				preset = 2; // Room
+			}
+		} else {
+			// Lower ceiling - check for narrow tunnel vs concrete bunker
+			trace_t trLeft, trRight;
+			vec3_t left, right, dir;
+
+			// Perpendicular vector to player looking direction
+			AngleVectors( cg.refdefViewAngles, NULL, dir, NULL );
+
+			VectorMA( cg.refdef.vieworg, -200.0f, dir, left );
+			VectorMA( cg.refdef.vieworg, 200.0f, dir, right );
+
+			CG_Trace( &trLeft, cg.refdef.vieworg, NULL, NULL, left, cg.predictedPlayerState.clientNum, MASK_SOLID );
+			CG_Trace( &trRight, cg.refdef.vieworg, NULL, NULL, right, cg.predictedPlayerState.clientNum, MASK_SOLID );
+
+			// If the horizontal tunnel width is narrow, use Tunnel preset
+			if ( ( trLeft.fraction + trRight.fraction ) * 400.0f < 280.0f ) {
+				preset = 5; // Tunnel
+			} else if ( isSewer ) {
+				preset = 6; // Sewer
+			} else {
+				preset = 1; // Bunker
+			}
+		}
+	}
+
+	if ( preset != lastPreset ) {
+		lastPreset = preset;
+		trap_Cvar_Set( "s_alReverbPreset", va( "%d", preset ) );
+	}
+}
+
+/*
+=================
 CG_DrawActiveFrame
 
 Generates and draws a game scene and status information at the given time.
@@ -1587,6 +1686,8 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	// set up cg.snap and possibly cg.nextSnap
 	CG_ProcessSnapshots();
+
+	CG_UpdateAutomaticReverb();
 
 	DEBUGTIME
 

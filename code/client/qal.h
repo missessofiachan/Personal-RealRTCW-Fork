@@ -36,14 +36,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifdef USE_LOCAL_HEADERS
 #include "../AL/al.h"
 #include "../AL/alc.h"
+#include "../AL/efx.h"
 #else
 #ifdef _MSC_VER
   // MSVC users must install the OpenAL SDK which doesn't use the AL/*.h scheme.
   #include <al.h>
   #include <alc.h>
+  #include <efx.h>
 #else
   #include <AL/al.h>
   #include <AL/alc.h>
+  #include <AL/efx.h>
 #endif
 #endif
 
@@ -127,6 +130,20 @@ extern LPALGETBUFFERIV qalGetBufferiv;
 extern LPALDOPPLERFACTOR qalDopplerFactor;
 extern LPALSPEEDOFSOUND qalSpeedOfSound;
 extern LPALDISTANCEMODEL qalDistanceModel;
+
+/* EFX functions */
+extern LPALGENEFFECTS qalGenEffects;
+extern LPALDELETEEFFECTS qalDeleteEffects;
+extern LPALISEFFECT qalIsEffect;
+extern LPALEFFECTI qalEffecti;
+extern LPALEFFECTF qalEffectf;
+extern LPALEFFECTFV qalEffectfv;
+extern LPALGENAUXILIARYEFFECTSLOTS qalGenAuxiliaryEffectSlots;
+extern LPALDELETEAUXILIARYEFFECTSLOTS qalDeleteAuxiliaryEffectSlots;
+extern LPALAUXILIARYEFFECTSLOTI qalAuxiliaryEffectSloti;
+extern LPALAUXILIARYEFFECTSLOTF qalAuxiliaryEffectSlotf;
+extern LPALAUXILIARYEFFECTSLOTFV qalAuxiliaryEffectSlotfv;
+
 
 extern LPALCCREATECONTEXT qalcCreateContext;
 extern LPALCMAKECONTEXTCURRENT qalcMakeContextCurrent;
@@ -242,9 +259,24 @@ extern LPALCCAPTURESAMPLES qalcCaptureSamples;
 #define qalcCaptureStart alcCaptureStart
 #define qalcCaptureStop alcCaptureStop
 #define qalcCaptureSamples alcCaptureSamples
+
+/* EFX fallback macros */
+#define qalGenEffects alGenEffects
+#define qalDeleteEffects alDeleteEffects
+#define qalIsEffect alIsEffect
+#define qalEffecti alEffecti
+#define qalEffectf alEffectf
+#define qalEffectfv alEffectfv
+#define qalGenAuxiliaryEffectSlots alGenAuxiliaryEffectSlots
+#define qalDeleteAuxiliaryEffectSlots alDeleteAuxiliaryEffectSlots
+#define qalAuxiliaryEffectSloti alAuxiliaryEffectSloti
+#define qalAuxiliaryEffectSlotf alAuxiliaryEffectSlotf
+#define qalAuxiliaryEffectSlotfv alAuxiliaryEffectSlotfv
+
 #endif
 
 qboolean QAL_Init(const char *libname);
+void QAL_InitEFX(void);
 void QAL_Shutdown( void );
 
 #endif	// __QAL_H__

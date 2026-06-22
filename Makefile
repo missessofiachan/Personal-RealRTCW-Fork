@@ -1965,6 +1965,7 @@ Q3OBJ = \
   \
   $(B)/client/qal.o \
   $(B)/client/snd_openal.o \
+  $(B)/client/snd_efx.o \
   \
   $(B)/client/cl_curl.o \
   \
