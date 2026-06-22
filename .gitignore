@@ -44,3 +44,6 @@ profile
 # vscode
 .vscode/
 /.vs
+
+.agent
+.gemini

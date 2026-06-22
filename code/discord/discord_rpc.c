@@ -382,6 +382,13 @@ static void Discord_Pump(void)
         memcpy(&op, incoming_buf, 4);
         memcpy(&payload_len, incoming_buf + 4, 4);
 
+        if (8 + payload_len >= sizeof(incoming_buf))
+        {
+            discord_log("Discord: Received payload size too large (%u bytes).\n", payload_len);
+            Discord_ShutdownSocket();
+            return;
+        }
+
         if (incoming_len < 8 + payload_len)
         {
             break;
@@ -496,7 +503,6 @@ void Discord_Init(void)
     InitializeCriticalSection(&payload_mutex);
     worker_thread = CreateThread(NULL, 0, Discord_WorkerThread, NULL, 0, NULL);
 #else
-    pthread_mutex_init(&payload_mutex, NULL);
     pthread_create(&worker_thread, NULL, Discord_WorkerThread, NULL);
 #endif
 }
@@ -737,12 +743,12 @@ static void Discord_Update(void)
     }
 
     // Escape details and state string for safe JSON construction
-    char escaped_details[256];
-    char escaped_state[256];
+    char escaped_details[512];
+    char escaped_state[512];
     EscapeJsonString(details, escaped_details, sizeof(escaped_details));
     EscapeJsonString(state, escaped_state, sizeof(escaped_state));
 
-    char payload[1024];
+    char payload[2048];
     snprintf(payload, sizeof(payload),
              "{"
              "\"cmd\":\"SET_ACTIVITY\","

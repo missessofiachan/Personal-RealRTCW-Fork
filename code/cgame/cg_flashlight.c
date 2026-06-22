@@ -6,9 +6,21 @@ float cg_flashlightEnergy = 1.0f; // range 0.0f to 1.0f
 
 void CG_setClientFlags( void );
 
+// Flashlight mechanics constants
+#define FLASHLIGHT_MIN_ENERGY_TO_TURN_ON 0.10f
+#define FLASHLIGHT_DRAIN_TIME_MS         20000.0f // 20 seconds to drain
+#define FLASHLIGHT_RECHARGE_TIME_MS      10000.0f // 10 seconds to recharge
+
+// Flashlight projection constants
+#define FLASHLIGHT_MAX_DISTANCE          600.0f
+#define FLASHLIGHT_DISTANCE_THRESHOLD    100.0f
+#define FLASHLIGHT_SPOT_SIZE_DEFAULT     280.0f
+#define FLASHLIGHT_SPOT_SIZE_BASE        220.0f
+#define FLASHLIGHT_SPOT_SIZE_SCALE       0.07f
+
 void CG_Flashlight_Toggle_f( void ) {
-	if ( !cg_flashlightOn && cg_flashlightEnergy < 0.10f ) {
-		// Prevent turning on when battery is depleted (less than 10%)
+	if ( !cg_flashlightOn && cg_flashlightEnergy < FLASHLIGHT_MIN_ENERGY_TO_TURN_ON ) {
+		// Prevent turning on when battery is depleted
 		return;
 	}
 
@@ -35,7 +47,7 @@ void CG_Flashlight_Frame( void ) {
 
 	// 1. Drain battery if ON, recharge if OFF
 	if ( cg_flashlightOn ) {
-		cg_flashlightEnergy -= (float)cg.frametime / 20000.0f; // drains completely in 20 seconds
+		cg_flashlightEnergy -= (float)cg.frametime / FLASHLIGHT_DRAIN_TIME_MS;
 		if ( cg_flashlightEnergy <= 0.0f ) {
 			cg_flashlightEnergy = 0.0f;
 			cg_flashlightOn = qfalse;
@@ -45,7 +57,7 @@ void CG_Flashlight_Frame( void ) {
 			CG_setClientFlags();
 		}
 	} else {
-		cg_flashlightEnergy += (float)cg.frametime / 10000.0f; // recharges fully in 10 seconds
+		cg_flashlightEnergy += (float)cg.frametime / FLASHLIGHT_RECHARGE_TIME_MS;
 		if ( cg_flashlightEnergy > 1.0f ) {
 			cg_flashlightEnergy = 1.0f;
 		}
@@ -56,27 +68,85 @@ void CG_Flashlight_Frame( void ) {
 	}
 
 	// 2. Project the primary spot light where the player is looking
-	VectorMA( cg.refdef.vieworg, 600, cg.refdef.viewaxis[0], end );
+	VectorMA( cg.refdef.vieworg, FLASHLIGHT_MAX_DISTANCE, cg.refdef.viewaxis[0], end );
 	CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, end, cg.predictedPlayerState.clientNum, MASK_SOLID );
 
-	distance = tr.fraction * 600.0f;
-	spotSize = 280.0f;
-	if ( distance > 100.0f ) {
-		spotSize = 220.0f + ( distance * 0.07f );
+	distance = tr.fraction * FLASHLIGHT_MAX_DISTANCE;
+	spotSize = FLASHLIGHT_SPOT_SIZE_DEFAULT;
+	if ( distance > FLASHLIGHT_DISTANCE_THRESHOLD ) {
+		spotSize = FLASHLIGHT_SPOT_SIZE_BASE + ( distance * FLASHLIGHT_SPOT_SIZE_SCALE );
 	}
 
+	float intensityScale = 1.0f;
+
 	// WWII Halogen/Filament warm incandescent color temperature (solid, steady light)
+	// Low-battery dimming and flickering effect inspired by Classic Doom 3 BFG
+	if ( cg_flashlightEnergy < 0.25f ) {
+		float factor = cg_flashlightEnergy / 0.25f; // 1.0 down to 0.0
+		if ( random() > factor ) {
+			// Flicker: drop to a very dim state
+			intensityScale = 0.1f + 0.15f * random();
+		} else {
+			// Dimming effect as it drains
+			intensityScale = 0.4f + 0.6f * factor;
+		}
+	}
+
 	// 1. Concentrated bright hotspot (inner cone)
-	trap_R_AddLightToScene( tr.endpos, spotSize * 0.5f, 1.0f, 0.88f, 0.70f, 0 );
+	trap_R_AddLightToScene( tr.endpos, spotSize * 0.5f, 1.0f * intensityScale, 0.88f * intensityScale, 0.70f * intensityScale, 0 );
 
 	// 2. Wide, dim ambient spill (outer cone)
-	trap_R_AddLightToScene( tr.endpos, spotSize * 1.6f, 0.35f, 0.30f, 0.22f, 0 );
+	trap_R_AddLightToScene( tr.endpos, spotSize * 1.6f, 0.35f * intensityScale, 0.30f * intensityScale, 0.22f * intensityScale, 0 );
+
+	// 3. Player-centric ambient light (illuminates hands, weapons, and close NPCs)
+	vec3_t playerLightOrg;
+	VectorMA( cg.refdef.vieworg, 32.0f, cg.refdef.viewaxis[0], playerLightOrg );
+	trap_R_AddLightToScene( playerLightOrg, 150.0f, 0.40f * intensityScale, 0.35f * intensityScale, 0.28f * intensityScale, 0 );
+
+	// 4. Midpoint ambient light (illuminates NPCs/entities passing through the beam)
+	if ( distance > 100.0f ) {
+		vec3_t midLightOrg;
+		VectorMA( cg.refdef.vieworg, distance * 0.5f, cg.refdef.viewaxis[0], midLightOrg );
+		float midRadius = distance * 0.4f;
+		if ( midRadius > 250.0f ) {
+			midRadius = 250.0f;
+		}
+		trap_R_AddLightToScene( midLightOrg, midRadius, 0.45f * intensityScale, 0.40f * intensityScale, 0.32f * intensityScale, 0 );
+	}
 }
 
+// HUD layout constants
+#define FLASHLIGHT_HUD_X 465
+#define FLASHLIGHT_HUD_Y 450
+#define FLASHLIGHT_BAR_WIDTH 100
+#define FLASHLIGHT_BAR_HEIGHT 6
+
 void CG_Flashlight_DrawHUD( void ) {
-	vec4_t color = { 1.0f, 0.6f, 0.1f, 0.8f };       // Bright HL2-style orange/yellow
-	vec4_t bgcolor = { 0.2f, 0.2f, 0.2f, 0.4f };     // Translucent dark gray background
-	vec4_t bordercolor = { 1.0f, 0.6f, 0.1f, 0.25f }; // Subtle orange border
+	static qhandle_t flashlightIcon = 0;
+	if ( !flashlightIcon ) {
+		flashlightIcon = trap_R_RegisterShader( "gfx/2d/flashlight_icon" );
+	}
+
+	vec4_t color = { 1.0f, 1.0f, 1.0f, 0.8f };       // Dynamic color
+	vec4_t boxcolor = { 0.05f, 0.05f, 0.05f, 0.9f }; // Dark background box
+	vec4_t iconcolor = { 0.9f, 0.9f, 0.9f, 1.0f };   // White icon
+
+	// Calculate dynamic color: White -> Yellow -> Red
+	if ( cg_flashlightEnergy >= 1.0f ) {
+		color[2] = 1.0f;
+	} else if ( cg_flashlightEnergy < 0.66f ) {
+		color[2] = 0.0f;
+	} else {
+		color[2] = ( cg_flashlightEnergy - 0.66f ) / 0.34f;
+	}
+
+	if ( cg_flashlightEnergy > 0.30f ) {
+		color[1] = 1.0f;
+	} else if ( cg_flashlightEnergy < 0.15f ) {
+		color[1] = 0.0f;
+	} else {
+		color[1] = ( cg_flashlightEnergy - 0.15f ) / 0.15f;
+	}
 
 	// Don't draw if flashlight is off and battery is fully charged (keeps HUD clean)
 	if ( !cg_flashlightOn && cg_flashlightEnergy >= 1.0f ) {
@@ -87,15 +157,16 @@ void CG_Flashlight_DrawHUD( void ) {
 		return;
 	}
 
-	// Draw "FLASHLIGHT" label (virtual 640x480 screen coordinates)
-	CG_DrawStringExt( 510, 420, "FLASHLIGHT", color, qfalse, qtrue, 6, 9, 0 );
+	// Draw black background box (encompasses icon and bar)
+	CG_FillRect( FLASHLIGHT_HUD_X - 20, FLASHLIGHT_HUD_Y - 4, FLASHLIGHT_BAR_WIDTH + 24, FLASHLIGHT_BAR_HEIGHT + 8, boxcolor );
 
-	// Draw bar border
-	CG_DrawRect( 509, 431, 102, 8, 1, bordercolor );
-
-	// Draw bar background
-	CG_FillRect( 510, 432, 100, 6, bgcolor );
+	// Draw flashlight icon
+	if ( flashlightIcon ) {
+		trap_R_SetColor( iconcolor );
+		CG_DrawPic( FLASHLIGHT_HUD_X - 16, FLASHLIGHT_HUD_Y - 2, 10, 10, flashlightIcon );
+		trap_R_SetColor( NULL );
+	}
 
 	// Draw bar fill
-	CG_FillRect( 510, 432, (int)(100.0f * cg_flashlightEnergy), 6, color );
+	CG_FillRect( FLASHLIGHT_HUD_X, FLASHLIGHT_HUD_Y, (int)(FLASHLIGHT_BAR_WIDTH * cg_flashlightEnergy), FLASHLIGHT_BAR_HEIGHT, color );
 }
