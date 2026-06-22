@@ -2909,6 +2909,9 @@ Check whether client has been paused.
 */
 qboolean CL_CheckPaused(void)
 {
+	if ( com_pause && com_pause->integer )
+		return qtrue;
+
 	// if cl_paused->modified is set, the cvar has only been changed in
 	// this frame. Keep paused in this frame to ensure the server doesn't
 	// lag behind.

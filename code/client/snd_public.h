@@ -60,6 +60,7 @@ void S_Respatialize( int entityNum, const vec3_t origin, vec3_t axis[3], int inw
 void S_UpdateEntityPosition( int entityNum, const vec3_t origin );
 
 void S_Update( void );
+void S_MuteSound( qboolean mute );
 
 void S_DisableSounds( void );
 

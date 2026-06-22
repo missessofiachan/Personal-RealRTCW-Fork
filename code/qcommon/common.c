@@ -97,6 +97,7 @@ cvar_t	*com_maxfpsUnfocused;
 cvar_t	*com_minimized;
 cvar_t	*com_maxfpsMinimized;
 cvar_t	*com_abnormalExit;
+cvar_t	*com_pause;
 cvar_t	*com_standalone;
 cvar_t	*com_gamename;
 cvar_t	*com_atmosphericEffect;	/// Berserker
@@ -2397,6 +2398,7 @@ void Com_Init( char *commandLine ) {
 	com_minimized = Cvar_Get( "com_minimized", "0", CVAR_ROM );
 	com_maxfpsMinimized = Cvar_Get( "com_maxfpsMinimized", "0", CVAR_ARCHIVE );
 	com_abnormalExit = Cvar_Get( "com_abnormalExit", "0", CVAR_ROM );
+	com_pause = Cvar_Get( "com_pause", "0", CVAR_ROM );
 	com_busyWait = Cvar_Get("com_busyWait", "0", CVAR_ARCHIVE);
 	Cvar_Get("com_errorMessage", "", CVAR_ROM | CVAR_NORESTART);
 

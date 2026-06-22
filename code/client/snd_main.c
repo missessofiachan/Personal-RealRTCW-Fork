@@ -343,11 +343,43 @@ void S_UpdateEntityPosition( int entityNum, const vec3_t origin )
 
 /*
 =================
+S_MuteSound
+=================
+*/
+void S_MuteSound( qboolean mute ) {
+	static int saved_s_muted = -1;
+
+	if ( !s_muted ) {
+		return;
+	}
+
+	if ( mute ) {
+		if ( saved_s_muted == -1 ) {
+			saved_s_muted = s_muted->integer;
+		}
+		Cvar_SetValue( "s_muted", 1 );
+	} else {
+		if ( saved_s_muted != -1 ) {
+			Cvar_SetValue( "s_muted", saved_s_muted );
+			saved_s_muted = -1;
+		}
+	}
+}
+
+/*
+=================
 S_Update
 =================
 */
 void S_Update( void )
 {
+	if ( com_pause && com_pause->integer ) {
+		if( si.Update ) {
+			si.Update( );
+		}
+		return;
+	}
+
 	if(s_muted->integer)
 	{
 		if(!(s_muteWhenMinimized->integer && com_minimized->integer) &&

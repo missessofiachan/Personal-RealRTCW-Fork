@@ -888,6 +888,11 @@ static qboolean SV_CheckPaused( void ) {
 	client_t    *cl;
 	int i;
 
+	if ( com_pause && com_pause->integer ) {
+		sv_paused->integer = 1;
+		return qtrue;
+	}
+
 	if ( !cl_paused->integer ) {
 		return qfalse;
 	}

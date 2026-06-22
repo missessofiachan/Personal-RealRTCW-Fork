@@ -1170,8 +1170,16 @@ static void IN_ProcessEvents( void )
 			case SDL_EVENT_WINDOW_MINIMIZED :    Cvar_SetValue( "com_minimized", 1 ); break;
 			case SDL_EVENT_WINDOW_RESTORED :
 			case SDL_EVENT_WINDOW_MAXIMIZED :    Cvar_SetValue( "com_minimized", 0 ); break;
-			case SDL_EVENT_WINDOW_FOCUS_LOST :   Cvar_SetValue( "com_unfocused", 1 ); break;
-			case SDL_EVENT_WINDOW_FOCUS_GAINED : Cvar_SetValue( "com_unfocused", 0 ); break;
+			case SDL_EVENT_WINDOW_FOCUS_LOST :
+				Cvar_SetValue( "com_unfocused", 1 );
+				S_MuteSound( qtrue );
+				Cvar_SetValue( "com_pause", 1 );
+				break;
+			case SDL_EVENT_WINDOW_FOCUS_GAINED :
+				Cvar_SetValue( "com_unfocused", 0 );
+				S_MuteSound( qfalse );
+				Cvar_SetValue( "com_pause", 0 );
+				break;
 
 			default:
 				break;
