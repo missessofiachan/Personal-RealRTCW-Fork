@@ -58,14 +58,14 @@ itemDef {
 		textscale .23
 		group grpControlbutton
 		background "ui/assets/button_back.tga"
-		rect 10 10 100 12
+		rect 10 10 80 12
 		textfont UI_FONT_BIG
 		textalign 1
-		textalignx 50
+		textalignx 40
 		textaligny 10
 		forecolor 1 1 1 1
  		visible 1
-		action { hide grpSystem ; show graphics ; show graphicsapply }
+		action { hide grpSystem ; hide sofiasettings ; show graphics ; show graphicsapply }
 		mouseEnter { setitemcolor ctr_graphics backcolor .1 .37 .1 1 }
 		mouseExit { setitemcolor ctr_graphics backcolor .37 .1 .1 1 }
 		}
@@ -308,14 +308,14 @@ open in_vid_restart_popmenu ; hide graphics ; hide graphicsapply ; hide iortcwgr
 		textfont UI_FONT_BIG
 	    textscale .23
 	    group grpControlbutton
-	    rect 120 10 100 12
+	    rect 95 10 80 12
 		background "ui/assets/button_back.tga"
 	    textalign 1
-	    textalignx 50
+	    textalignx 40
 	    textaligny 10
 	    forecolor 1 1 1 1
  	    visible 1
-	    action { hide grpsystem ; show iortcwgraphics ; show graphicsapply }
+	    action { hide grpsystem ; hide sofiasettings ; show iortcwgraphics ; show graphicsapply }
 		mouseEnter { setitemcolor ctr_sound backcolor .1 .37 .1 1 }
 		mouseExit { setitemcolor ctr_sound backcolor .37 .1 .1 1 }
 	}
@@ -630,14 +630,14 @@ itemDef {
 		textfont UI_FONT_BIG
 	    textscale .23
 	    group grpControlbutton
-	    rect 230 10 100 12
+	    rect 180 10 80 12
 		background "ui/assets/button_back.tga"
 	    textalign 1
-	    textalignx 50
+	    textalignx 40
 	    textaligny 10
 	    forecolor 1 1 1 1
  	    visible 1
-	    action { hide grpsystem ; show performancegraphics ; show graphicsapply }
+	    action { hide grpsystem ; hide sofiasettings ; show performancegraphics ; show graphicsapply }
 		mouseEnter { setitemcolor ctr_sound backcolor .1 .37 .1 1 }
 		mouseExit { setitemcolor ctr_sound backcolor .37 .1 .1 1 }
 	}
@@ -838,15 +838,15 @@ itemDef {
 		type 1
 		textscale .23
 		group grpControlbutton
-		rect 340 10 100 12
+		rect 265 10 80 12
 		textalign 1
-		textalignx 50
+		textalignx 40
 		textfont UI_FONT_BIG
 		textaligny 10
 		forecolor 1 1 1 1
 		backcolor .1 .1 .1 0 
 		visible 1
-		action { hide grpSystem ; show sound }
+		action { hide grpSystem ; hide sofiasettings ; show sound }
 		mouseEnter { setitemcolor ctr_sound backcolor .1 .37 .1 1 }
 		mouseExit { setitemcolor ctr_sound backcolor .37 .1 .1 1 }
 	}
@@ -857,9 +857,9 @@ itemDef {
 		type 1
 		textscale .23
 		group grpControlbutton
-		rect 440 10 100 12
+		rect 350 10 80 12
 		textalign 1
-		textalignx 50
+		textalignx 40
 		textfont UI_FONT_BIG
 		textaligny 10
 		forecolor 1 1 1 1
