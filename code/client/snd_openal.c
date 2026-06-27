@@ -48,6 +48,8 @@ cvar_t *s_alAvailableInputDevices;
 cvar_t *s_alTalkAnims;
 cvar_t *s_alReverbPreset;
 cvar_t *s_alReverb;
+cvar_t *s_alReverbGain;
+cvar_t *s_alHRTF;
 
 static qboolean enumeration_ext = qfalse;
 static qboolean enumeration_all_ext = qfalse;
@@ -3013,6 +3015,46 @@ void S_AL_Update( void )
     s_alReverbPreset->modified = qfalse;
   }
 
+  // Update EFX parameters (reverb crossfading tick)
+  S_EFX_Update();
+
+  // Reverb gain multiplier
+  if (s_alReverbGain->modified)
+  {
+    S_EFX_UpdateGain(s_alReverbGain->value);
+    s_alReverbGain->modified = qfalse;
+  }
+
+  // Runtime HRTF toggle
+  if (s_alHRTF->modified)
+  {
+    if (qalcResetDeviceSOFT && qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF"))
+    {
+      ALCint attribs[] = { ALC_HRTF_SOFT, s_alHRTF->integer ? ALC_TRUE : ALC_FALSE, 0 };
+      if (qalcResetDeviceSOFT(alDevice, attribs))
+      {
+        ALCint hrtfState = 0;
+        qalcGetIntegerv(alDevice, ALC_HRTF_SOFT, 1, &hrtfState);
+        Com_Printf("HRTF toggled: %s\n", hrtfState ? "^2Enabled" : "^1Disabled");
+        if (hrtfState && qalcGetStringiSOFT)
+        {
+          const ALCchar *hrtfName = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, 0);
+          if (hrtfName)
+            Com_Printf("HRTF Profile: %s\n", hrtfName);
+        }
+      }
+      else
+      {
+        Com_Printf(S_COLOR_YELLOW "WARNING: Failed to toggle HRTF. Try 'snd_restart'.\n");
+      }
+    }
+    else
+    {
+      Com_Printf("HRTF change requires 'snd_restart' (alcResetDeviceSOFT not available).\n");
+    }
+    s_alHRTF->modified = qfalse;
+  }
+
   // Clear the modified flags on the other cvars
   s_alGain->modified = qfalse;
   s_volume->modified = qfalse;
@@ -3118,6 +3160,35 @@ static void S_AL_SoundInfo(void)
   if(enumeration_all_ext || enumeration_ext)
     Com_Printf("  Available Devices:\n%s", s_alAvailableDevices->string);
 
+  // HRTF status
+  if(qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF"))
+  {
+    ALCint hrtfState = 0;
+    qalcGetIntegerv(alDevice, ALC_HRTF_SOFT, 1, &hrtfState);
+    Com_Printf("  HRTF:           %s\n", hrtfState ? "^2Enabled" : "^1Disabled");
+    if(hrtfState && qalcGetStringiSOFT)
+    {
+      const ALCchar *hrtfName = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, 0);
+      if(hrtfName)
+        Com_Printf("  HRTF Profile:   %s\n", hrtfName);
+    }
+  }
+  else
+  {
+    Com_Printf("  HRTF:           ^3Not supported by device\n");
+  }
+
+  // EFX / Reverb status
+  Com_Printf("  EFX Reverb:     %s\n", s_alReverb->integer ? "^2Enabled" : "^1Disabled");
+  if(s_alReverb->integer)
+  {
+    const char* presetNames[] = { "OUTDOORS", "BUNKER", "ROOM", "LARGE HALL", "CRYPT", "TUNNEL", "SEWER", "DEPOT" };
+    int preset = s_alReverbPreset->integer;
+    if(preset >= 0 && preset <= 7)
+      Com_Printf("  Reverb Preset:  %s\n", presetNames[preset]);
+    Com_Printf("  Reverb Gain:    %.2f\n", s_alReverbGain->value);
+  }
+
 #ifdef USE_VOIP
   if(capture_ext)
   {
@@ -3210,6 +3281,8 @@ qboolean S_AL_Init( soundInterface_t *si )
   s_alTalkAnims = Cvar_Get("s_alTalkAnims", "160", CVAR_ARCHIVE);
   s_alReverbPreset = Cvar_Get("s_alReverbPreset", "0", 0);
   s_alReverb = Cvar_Get("s_alReverb", "1", CVAR_ARCHIVE);
+  s_alReverbGain = Cvar_Get("s_alReverbGain", "1.0", CVAR_ARCHIVE);
+  s_alHRTF = Cvar_Get("s_alHRTF", "0", CVAR_ARCHIVE);
 
   s_alDriver = Cvar_Get( "s_alDriver", ALDRIVER_DEFAULT, CVAR_LATCH | CVAR_PROTECTED );
 
@@ -3311,10 +3384,20 @@ qboolean S_AL_Init( soundInterface_t *si )
 
       // Create OpenAL context
       if ( qalcIsExtensionPresent( alDevice, "ALC_EXT_EFX" ) ) {
-        ALCint attribs[3] = { ALC_MAX_AUXILIARY_SENDS, 2, 0 };
-        alContext = qalcCreateContext( alDevice, attribs );
+        if ( s_alHRTF->integer && qalcIsExtensionPresent( alDevice, "ALC_SOFT_HRTF" ) ) {
+          ALCint attribs[5] = { ALC_MAX_AUXILIARY_SENDS, 2, ALC_HRTF_SOFT, ALC_TRUE, 0 };
+          alContext = qalcCreateContext( alDevice, attribs );
+        } else {
+          ALCint attribs[3] = { ALC_MAX_AUXILIARY_SENDS, 2, 0 };
+          alContext = qalcCreateContext( alDevice, attribs );
+        }
       } else {
-        alContext = qalcCreateContext( alDevice, NULL );
+        if ( s_alHRTF->integer && qalcIsExtensionPresent( alDevice, "ALC_SOFT_HRTF" ) ) {
+          ALCint attribs[3] = { ALC_HRTF_SOFT, ALC_TRUE, 0 };
+          alContext = qalcCreateContext( alDevice, attribs );
+        } else {
+          alContext = qalcCreateContext( alDevice, NULL );
+        }
       }
       if( !alContext )
       {
@@ -3332,8 +3415,24 @@ qboolean S_AL_Init( soundInterface_t *si )
       S_AL_SrcInit( );
       S_EFX_Init( );
 
+      // Apply initial reverb gain multiplier
+      S_EFX_UpdateGain( s_alReverbGain->value );
+
       // Print this for informational purposes
       Com_Printf( "Allocated %d sources.\n", srcCount);
+
+      // Log HRTF status on initialization
+      if ( qalcIsExtensionPresent( alDevice, "ALC_SOFT_HRTF" ) ) {
+        ALCint hrtfState = 0;
+        qalcGetIntegerv( alDevice, ALC_HRTF_SOFT, 1, &hrtfState );
+        Com_Printf( "HRTF: %s\n", hrtfState ? "Enabled" : "Disabled" );
+        if ( hrtfState && qalcGetStringiSOFT ) {
+          const ALCchar *hrtfName = qalcGetStringiSOFT( alDevice, ALC_HRTF_SPECIFIER_SOFT, 0 );
+          if ( hrtfName ) {
+            Com_Printf( "HRTF Profile: %s\n", hrtfName );
+          }
+        }
+      }
 
       // Set up OpenAL parameters (doppler, etc)
       qalDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);

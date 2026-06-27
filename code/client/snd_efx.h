@@ -14,5 +14,7 @@ void S_EFX_Init(void);
 void S_EFX_Shutdown(void);
 void S_EFX_SetPreset(int presetNum);
 void S_EFX_AttachSource(unsigned int alSource);
+void S_EFX_Update(void);
+void S_EFX_UpdateGain(float gain);
 
 #endif // __SND_EFX_H__
