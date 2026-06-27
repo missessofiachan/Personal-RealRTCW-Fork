@@ -490,6 +490,9 @@ void* Discord_WorkerThread(void* arg)
 
 void Discord_Init(void)
 {
+    if (Cvar_VariableIntegerValue("cl_discord") == 0)
+        return;
+
     if (thread_active)
         return;
 
@@ -785,6 +788,15 @@ static void Discord_Update(void)
 
 void Discord_RunFrame(void)
 {
+    if (Cvar_VariableIntegerValue("cl_discord") == 0)
+    {
+        if (thread_active)
+        {
+            Discord_Shutdown();
+        }
+        return;
+    }
+
     qboolean changed = qfalse;
 
     // Initialize background thread on the first run frame if not already running

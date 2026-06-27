@@ -327,6 +327,12 @@ vmCvar_t cg_gothic;
 vmCvar_t cg_simpleZoomFov;
 vmCvar_t cg_simpleZoomTimeMs;
 
+vmCvar_t cg_flashlightRadius;
+vmCvar_t cg_flashlightColorR;
+vmCvar_t cg_flashlightColorG;
+vmCvar_t cg_flashlightColorB;
+vmCvar_t cg_flashlightSway;
+
 typedef struct {
 	vmCvar_t    *vmCvar;
 	char        *cvarName;
@@ -591,6 +597,12 @@ cvarTable_t cvarTable[] = {
 
 	{&cg_simpleZoomFov, "cg_simpleZoomFov", "60", CVAR_ARCHIVE},
 	{&cg_simpleZoomTimeMs, "cg_simpleZoomTimeMs", "120", CVAR_ARCHIVE},
+
+	{&cg_flashlightRadius, "cg_flashlightRadius", "280.0", CVAR_ARCHIVE},
+	{&cg_flashlightColorR, "cg_flashlightColorR", "1.0", CVAR_ARCHIVE},
+	{&cg_flashlightColorG, "cg_flashlightColorG", "0.75", CVAR_ARCHIVE},
+	{&cg_flashlightColorB, "cg_flashlightColorB", "0.45", CVAR_ARCHIVE},
+	{&cg_flashlightSway, "cg_flashlightSway", "15.0", CVAR_ARCHIVE},
 
 };
 int cvarTableSize = ARRAY_LEN( cvarTable );

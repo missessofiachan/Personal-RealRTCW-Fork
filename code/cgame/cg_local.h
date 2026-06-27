@@ -2002,6 +2002,12 @@ extern vmCvar_t cg_gothic;
 extern vmCvar_t cg_simpleZoomFov;
 extern vmCvar_t cg_simpleZoomTimeMs;
 
+extern vmCvar_t cg_flashlightRadius;
+extern vmCvar_t cg_flashlightColorR;
+extern vmCvar_t cg_flashlightColorG;
+extern vmCvar_t cg_flashlightColorB;
+extern vmCvar_t cg_flashlightSway;
+
 //
 // cg_main.c
 //

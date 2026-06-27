@@ -850,6 +850,25 @@ itemDef {
 		mouseEnter { setitemcolor ctr_sound backcolor .1 .37 .1 1 }
 		mouseExit { setitemcolor ctr_sound backcolor .37 .1 .1 1 }
 	}
+
+	itemDef {
+		name ctr_sofia
+		text "SOFIA"
+		type 1
+		textscale .23
+		group grpControlbutton
+		rect 440 10 100 12
+		textalign 1
+		textalignx 50
+		textfont UI_FONT_BIG
+		textaligny 10
+		forecolor 1 1 1 1
+		backcolor .1 .1 .1 0 
+		visible 1
+		action { hide grpSystem ; show sofiasettings }
+		mouseEnter { setitemcolor ctr_sofia backcolor .1 .37 .1 1 }
+		mouseExit { setitemcolor ctr_sofia backcolor .37 .1 .1 1 }
+	}
 	
 		 itemDef {
 	    name sound
@@ -1135,11 +1154,241 @@ itemDef {
 		border 1
 		bordercolor .5 .5 .5 .5
 		action { play "sound/misc/kcaction.wav" ; 
-open in_snd_restart_popmenu ; hide sound ; hide applysystem }
+open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem }
 		mouseEnter { setitemcolor applysystem backcolor .5 .5 .5 .25 }
       	mouseExit { setitemcolor applysystem backcolor .1 .1 .1 .1 }
 
 		}
+
+	itemDef {
+	    name sofiasettings
+		group grpsystem
+	    text "SOFIA CUSTOM SETTINGS"
+	    textscale .25
+		decoration
+	    style WINDOW_STYLE_FILLED
+	    rect 190 25 290 12
+	    textalign 1
+		textfont UI_FONT_BIG
+	    textalignx 22
+	    textaligny 14
+	    border 1
+	    forecolor 1 1 1 1
+	    visible 0
+	}
+
+	itemDef {
+	    name sofiasettings
+		group grpsystem
+	    text "DISCORD INTEGRATION"
+	    textscale .22
+		decoration
+	    style WINDOW_STYLE_FILLED
+	    rect 190 45 290 12
+	    textalign 1
+		textfont UI_FONT_BIG
+	    textalignx 22
+	    textaligny 14
+	    border 1
+	    forecolor 0.2 0.8 0.2 1
+	    visible 0
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_YESNO
+		text "Discord Rich Presence"
+		cvar "cl_discord"
+		rect 82 60 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+	    name sofiasettings
+		group grpsystem
+	    text "FLASHLIGHT SETTINGS"
+	    textscale .22
+		decoration
+	    style WINDOW_STYLE_FILLED
+	    rect 190 80 290 12
+	    textalign 1
+		textfont UI_FONT_BIG
+	    textalignx 22
+	    textaligny 14
+	    border 1
+	    forecolor 0.2 0.8 0.2 1
+	    visible 0
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_SLIDER
+		text "Flashlight Sway"
+		cvarfloat "cg_flashlightSway" 15.0 1.0 30.0
+		rect 82 95 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_SLIDER
+		text "Flashlight Radius"
+		cvarfloat "cg_flashlightRadius" 280.0 100.0 600.0
+		rect 82 110 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_SLIDER
+		text "Flashlight Color R"
+		cvarfloat "cg_flashlightColorR" 1.0 0.0 2.0
+		rect 82 125 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_SLIDER
+		text "Flashlight Color G"
+		cvarfloat "cg_flashlightColorG" 0.75 0.0 2.0
+		rect 82 140 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_SLIDER
+		text "Flashlight Color B"
+		cvarfloat "cg_flashlightColorB" 0.45 0.0 2.0
+		rect 82 155 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+	    name sofiasettings
+		group grpsystem
+	    text "AUDIO SETTINGS"
+	    textscale .22
+		decoration
+	    style WINDOW_STYLE_FILLED
+	    rect 190 175 290 12
+	    textalign 1
+		textfont UI_FONT_BIG
+	    textalignx 22
+	    textaligny 14
+	    border 1
+	    forecolor 0.2 0.8 0.2 1
+	    visible 0
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_YESNO
+		text "HRTF (Headphones)"
+		cvar "s_alHRTF"
+		rect 82 190 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_YESNO
+		text "Environmental Reverb"
+		cvar "s_alReverb"
+		rect 82 205 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_SLIDER
+		text "Reverb Intensity"
+		cvarfloat "s_alReverbGain" 1.0 0 2.0
+		rect 82 220 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+	}
 
 
 

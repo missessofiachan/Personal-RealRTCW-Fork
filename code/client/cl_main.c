@@ -3694,6 +3694,7 @@ void CL_Init( void ) {
 	// register our variables
 	//
 	cl_noprint = Cvar_Get( "cl_noprint", "0", 0 );
+	Cvar_Get( "cl_discord", "1", CVAR_ARCHIVE );
 #ifdef UPDATE_SERVER_NAME
 	cl_motd = Cvar_Get( "cl_motd", "1", 0 );
 #endif
