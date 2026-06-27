@@ -3927,6 +3927,22 @@ void Item_Slider_Paint( itemDef_t *item ) {
 
 	x = Item_Slider_ThumbPosition( item );
 	DC->drawHandlePic( x - ( SLIDER_THUMB_WIDTH / 2 ), y - 2, SLIDER_THUMB_WIDTH, SLIDER_THUMB_HEIGHT, DC->Assets.sliderThumb );
+
+	if ( item->cvar ) {
+		char valueStr[32];
+		float value = DC->getCVarValue( item->cvar );
+		float textY = item->text ? item->textRect.y : y + 10;
+		if ( ( (float)( (int) value ) ) == value ) {
+			Com_sprintf( valueStr, sizeof( valueStr ), "%i", (int) value );
+		} else {
+			Com_sprintf( valueStr, sizeof( valueStr ), "%.2f", value );
+		}
+		if ( item->text ) {
+			DC->drawText( item->textRect.x + item->textRect.w + 8 + SLIDER_WIDTH + 8, textY, item->font, item->textscale, newColor, valueStr, 0, 0, item->textStyle );
+		} else {
+			DC->drawText( item->window.rect.x + SLIDER_WIDTH + 8, textY, item->font, item->textscale, newColor, valueStr, 0, 0, item->textStyle );
+		}
+	}
 }
 
 void Item_Bind_Paint( itemDef_t *item ) {

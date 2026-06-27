@@ -399,8 +399,8 @@ void S_EFX_Update(void) {
 		qalEffectf( reverbEffect, AL_EAXREVERB_ECHO_DEPTH, currentParams.echoDepth );
 		qalEffectf( reverbEffect, AL_EAXREVERB_MODULATION_TIME, currentParams.modulationTime );
 		qalEffectf( reverbEffect, AL_EAXREVERB_MODULATION_DEPTH, currentParams.modulationDepth );
-		qalEffectf( reverbEffect, AL_EAXREVERB_HF_REFERENCE, currentParams.hfReference );
-		qalEffectf( reverbEffect, AL_EAXREVERB_LF_REFERENCE, currentParams.lfReference );
+		qalEffectf( reverbEffect, AL_EAXREVERB_HFREFERENCE, currentParams.hfReference );
+		qalEffectf( reverbEffect, AL_EAXREVERB_LFREFERENCE, currentParams.lfReference );
 	} else {
 		qalEffecti( reverbEffect, AL_EFFECT_TYPE, AL_EFFECT_REVERB );
 		qalEffectf( reverbEffect, AL_REVERB_GAIN, currentParams.gain );
