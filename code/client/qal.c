@@ -121,6 +121,10 @@ LPALAUXILIARYEFFECTSLOTI qalAuxiliaryEffectSloti = NULL;
 LPALAUXILIARYEFFECTSLOTF qalAuxiliaryEffectSlotf = NULL;
 LPALAUXILIARYEFFECTSLOTFV qalAuxiliaryEffectSlotfv = NULL;
 
+/* HRTF functions (ALC_SOFT_HRTF) */
+LPALCRESETDEVICESOFT qalcResetDeviceSOFT = NULL;
+LPALCGETSTRINGISOFT qalcGetStringiSOFT = NULL;
+
 static void *OpenALLib = NULL;
 
 static qboolean alinit_fail = qfalse;
@@ -247,6 +251,10 @@ qboolean QAL_Init(const char *libname)
 		return qfalse;
 	}
 
+	/* Load HRTF extension functions via alcGetProcAddress (graceful, not fatal) */
+	qalcResetDeviceSOFT = (LPALCRESETDEVICESOFT)qalcGetProcAddress(NULL, "alcResetDeviceSOFT");
+	qalcGetStringiSOFT = (LPALCGETSTRINGISOFT)qalcGetProcAddress(NULL, "alcGetStringiSOFT");
+
 	return qtrue;
 }
 
@@ -352,6 +360,10 @@ void QAL_Shutdown( void )
 	qalAuxiliaryEffectSloti = NULL;
 	qalAuxiliaryEffectSlotf = NULL;
 	qalAuxiliaryEffectSlotfv = NULL;
+
+	/* Reset HRTF functions */
+	qalcResetDeviceSOFT = NULL;
+	qalcGetStringiSOFT = NULL;
 }
 
 void QAL_InitEFX(void) {

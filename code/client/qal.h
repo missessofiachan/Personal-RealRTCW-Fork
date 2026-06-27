@@ -37,16 +37,19 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../AL/al.h"
 #include "../AL/alc.h"
 #include "../AL/efx.h"
+#include "../AL/alext.h"
 #else
 #ifdef _MSC_VER
   // MSVC users must install the OpenAL SDK which doesn't use the AL/*.h scheme.
   #include <al.h>
   #include <alc.h>
   #include <efx.h>
+  #include <alext.h>
 #else
   #include <AL/al.h>
   #include <AL/alc.h>
   #include <AL/efx.h>
+  #include <AL/alext.h>
 #endif
 #endif
 
@@ -143,6 +146,10 @@ extern LPALDELETEAUXILIARYEFFECTSLOTS qalDeleteAuxiliaryEffectSlots;
 extern LPALAUXILIARYEFFECTSLOTI qalAuxiliaryEffectSloti;
 extern LPALAUXILIARYEFFECTSLOTF qalAuxiliaryEffectSlotf;
 extern LPALAUXILIARYEFFECTSLOTFV qalAuxiliaryEffectSlotfv;
+
+/* HRTF functions (ALC_SOFT_HRTF) */
+extern LPALCRESETDEVICESOFT qalcResetDeviceSOFT;
+extern LPALCGETSTRINGISOFT qalcGetStringiSOFT;
 
 
 extern LPALCCREATECONTEXT qalcCreateContext;
@@ -272,6 +279,10 @@ extern LPALCCAPTURESAMPLES qalcCaptureSamples;
 #define qalAuxiliaryEffectSloti alAuxiliaryEffectSloti
 #define qalAuxiliaryEffectSlotf alAuxiliaryEffectSlotf
 #define qalAuxiliaryEffectSlotfv alAuxiliaryEffectSlotfv
+
+/* HRTF fallback macros */
+#define qalcResetDeviceSOFT alcResetDeviceSOFT
+#define qalcGetStringiSOFT alcGetStringiSOFT
 
 #endif
 

@@ -28,7 +28,7 @@ These modifications address hardware compatibility and the "clunky" feel of orig
 
 
 
-### Graceful Focus Loss Handling (Pause Logic)
+### Graceful Focus Loss Handling (Pause Logic) // works great hopefuly improved stablity too
 
 * **The Problem:** Alt-tabbing in fullscreen freezes the renderer, loops audio, or leaves the campaign running.
 * **The Solution:** Integrate `sdl_events.cpp:L508-L536` window focus event handlers.
@@ -43,11 +43,11 @@ These modifications address hardware compatibility and the "clunky" feel of orig
 
 Upgrades to make the game's visuals feel more reactive and physically present.
 
-### Flashlight Calibration & Polish
+### Flashlight Calibration & Polish // betterish
 
 * **Color Temp:** In `cg_flashlight.c`, use tungsten filament RGB values: `(1.0, 0.75, 0.45)` to replace "sterile" white light.
 * **Beam Jitter:** Introduce a microscopic random offset to `tr.endpos` and the light radius every frame to simulate a vibrating bulb.
-* **Dust Particles:** Trigger a particle-spawning function within the light beam’s volume to add environmental depth.
+* **Dust Particles:** Trigger a particle-spawning function within the light beam’s volume to add environmental depth. // not sure because outside levels 
 
 ### Low-Health Vignette Overlay
 
