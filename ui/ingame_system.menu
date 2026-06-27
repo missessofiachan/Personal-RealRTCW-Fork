@@ -1076,59 +1076,7 @@ itemDef {
 		action { uiScript glCustom }
    	}
 
-	itemDef {
-		name sound
-		textfont UI_FONT_BIG
-		group grpsystem
-		type ITEM_TYPE_YESNO
-		text "HRTF (Headphones)"
-		cvar "s_alHRTF"
-		rect 82 230 290 12
-		textalign ITEM_ALIGN_RIGHT
-		textalignx 142
-		textaligny 10
-		textscale .22 
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07       
-		forecolor 1 1 1 1
-		visible 0 
-	}
-	
-	itemDef {
-		name sound
-		textfont UI_FONT_BIG
-		group grpsystem
-		type ITEM_TYPE_YESNO
-		text "Environmental Reverb"
-		cvar "s_alReverb"
-		rect 82 245 290 12
-		textalign ITEM_ALIGN_RIGHT
-		textalignx 142
-		textaligny 10
-		textscale .22 
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07       
-		forecolor 1 1 1 1
-		visible 0 
-	}
-	
-	itemDef {
-		name sound
-		textfont UI_FONT_BIG
-		group grpsystem
-		type ITEM_TYPE_SLIDER
-		text "Reverb Intensity"
-		cvarfloat "s_alReverbGain" 1.0 0 2.0
-		rect 82 260 290 12
-		textalign ITEM_ALIGN_RIGHT
-		textalignx 142
-		textaligny 10
-		textscale .22 
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07       
-		forecolor 1 1 1 1
-		visible 0 
-	}
+
 
 
 	
@@ -1176,6 +1124,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 	    forecolor 1 1 1 1
 	    visible 0
 	}
+	
+	
 
 	itemDef {
 	    name sofiasettings
@@ -1269,10 +1219,30 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		name sofiasettings
 		textfont UI_FONT_BIG
 		group grpsystem
+		type ITEM_TYPE_BIND
+		text "Toggle Flashlight Key"
+		cvar "flashlight"
+		rect 82 125 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+		mouseenter { show keyBindStatus }
+		mouseexit { hide keyBindStatus }
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
 		type ITEM_TYPE_SLIDER
 		text "Flashlight Color R"
 		cvarfloat "cg_flashlightColorR" 1.0 0.0 2.0
-		rect 82 125 290 12
+		rect 82 140 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1290,7 +1260,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_SLIDER
 		text "Flashlight Color G"
 		cvarfloat "cg_flashlightColorG" 0.75 0.0 2.0
-		rect 82 140 290 12
+		rect 82 155 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1308,7 +1278,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_SLIDER
 		text "Flashlight Color B"
 		cvarfloat "cg_flashlightColorB" 0.45 0.0 2.0
-		rect 82 155 290 12
+		rect 82 170 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1326,7 +1296,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 	    textscale .22
 		decoration
 	    style WINDOW_STYLE_FILLED
-	    rect 190 175 290 12
+	    rect 190 190 290 12
 	    textalign 1
 		textfont UI_FONT_BIG
 	    textalignx 22
@@ -1343,7 +1313,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_YESNO
 		text "HRTF (Headphones)"
 		cvar "s_alHRTF"
-		rect 82 190 290 12
+		rect 82 205 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1361,7 +1331,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_YESNO
 		text "Environmental Reverb"
 		cvar "s_alReverb"
-		rect 82 205 290 12
+		rect 82 220 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1379,7 +1349,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_SLIDER
 		text "Reverb Intensity"
 		cvarfloat "s_alReverbGain" 1.0 0 2.0
-		rect 82 220 290 12
+		rect 82 235 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10

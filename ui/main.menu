@@ -3381,59 +3381,7 @@ itemDef {
 		action { uiScript glCustom }
    	}
 
-	itemDef {
-		name sounds
-		textfont UI_FONT_BIG
-		group system
-		type ITEM_TYPE_YESNO
-		text "HRTF (Headphones)"
-		cvar "s_alHRTF"
-		rect 300 325 290 12
-		textalign ITEM_ALIGN_RIGHT
-		textalignx 142
-		textaligny 10
-		textscale .22 
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07       
-		forecolor 1 1 1 1
-		visible 0 
-	}
-	
-	itemDef {
-		name sounds
-		textfont UI_FONT_BIG
-		group system
-		type ITEM_TYPE_YESNO
-		text "Environmental Reverb"
-		cvar "s_alReverb"
-		rect 300 340 290 12
-		textalign ITEM_ALIGN_RIGHT
-		textalignx 142
-		textaligny 10
-		textscale .22 
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07       
-		forecolor 1 1 1 1
-		visible 0 
-	}
-	
-	itemDef {
-		name sounds
-		textfont UI_FONT_BIG
-		group system
-		type ITEM_TYPE_SLIDER
-		text "Reverb Intensity"
-		cvarfloat "s_alReverbGain" 1.0 0 2.0
-		rect 300 355 290 12
-		textalign ITEM_ALIGN_RIGHT
-		textalignx 142
-		textaligny 10
-		textscale .22 
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07       
-		forecolor 1 1 1 1
-		visible 0 
-	}
+
 
 	itemDef {
 		name applysys
@@ -3566,10 +3514,30 @@ itemDef {
 		name sofiasettings
 		textfont UI_FONT_BIG
 		group system
+		type ITEM_TYPE_BIND
+		text "Toggle Flashlight Key"
+		cvar "flashlight"
+		rect 300 225 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+		mouseenter { show keyBindStatus }
+		mouseexit { hide keyBindStatus }
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group system
 		type ITEM_TYPE_SLIDER
 		text "Flashlight Color R"
 		cvarfloat "cg_flashlightColorR" 1.0 0.0 2.0
-		rect 300 225 290 12
+		rect 300 240 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3587,7 +3555,7 @@ itemDef {
 		type ITEM_TYPE_SLIDER
 		text "Flashlight Color G"
 		cvarfloat "cg_flashlightColorG" 0.75 0.0 2.0
-		rect 300 240 290 12
+		rect 300 255 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3605,7 +3573,7 @@ itemDef {
 		type ITEM_TYPE_SLIDER
 		text "Flashlight Color B"
 		cvarfloat "cg_flashlightColorB" 0.45 0.0 2.0
-		rect 300 255 290 12
+		rect 300 270 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3623,7 +3591,7 @@ itemDef {
 	    textscale .22
 		decoration
 	    style WINDOW_STYLE_FILLED
-	    rect 410 275 290 12
+	    rect 410 290 290 12
 	    textalign 1
 		textfont UI_FONT_BIG
 	    textalignx 22
@@ -3640,7 +3608,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "HRTF (Headphones)"
 		cvar "s_alHRTF"
-		rect 300 290 290 12
+		rect 300 305 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3658,7 +3626,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Environmental Reverb"
 		cvar "s_alReverb"
-		rect 300 305 290 12
+		rect 300 320 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3676,7 +3644,7 @@ itemDef {
 		type ITEM_TYPE_SLIDER
 		text "Reverb Intensity"
 		cvarfloat "s_alReverbGain" 1.0 0 2.0
-		rect 300 320 290 12
+		rect 300 335 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
