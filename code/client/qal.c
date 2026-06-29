@@ -120,6 +120,11 @@ LPALDELETEAUXILIARYEFFECTSLOTS qalDeleteAuxiliaryEffectSlots = NULL;
 LPALAUXILIARYEFFECTSLOTI qalAuxiliaryEffectSloti = NULL;
 LPALAUXILIARYEFFECTSLOTF qalAuxiliaryEffectSlotf = NULL;
 LPALAUXILIARYEFFECTSLOTFV qalAuxiliaryEffectSlotfv = NULL;
+LPALGENFILTERS qalGenFilters = NULL;
+LPALDELETEFILTERS qalDeleteFilters = NULL;
+LPALISFILTER qalIsFilter = NULL;
+LPALFILTERI qalFilteri = NULL;
+LPALFILTERF qalFilterf = NULL;
 
 /* HRTF functions (ALC_SOFT_HRTF) */
 LPALCRESETDEVICESOFT qalcResetDeviceSOFT = NULL;
@@ -360,6 +365,11 @@ void QAL_Shutdown( void )
 	qalAuxiliaryEffectSloti = NULL;
 	qalAuxiliaryEffectSlotf = NULL;
 	qalAuxiliaryEffectSlotfv = NULL;
+	qalGenFilters = NULL;
+	qalDeleteFilters = NULL;
+	qalIsFilter = NULL;
+	qalFilteri = NULL;
+	qalFilterf = NULL;
 
 	/* Reset HRTF functions */
 	qalcResetDeviceSOFT = NULL;
@@ -378,6 +388,11 @@ void QAL_InitEFX(void) {
 	qalAuxiliaryEffectSloti = (LPALAUXILIARYEFFECTSLOTI)qalGetProcAddress("alAuxiliaryEffectSloti");
 	qalAuxiliaryEffectSlotf = (LPALAUXILIARYEFFECTSLOTF)qalGetProcAddress("alAuxiliaryEffectSlotf");
 	qalAuxiliaryEffectSlotfv = (LPALAUXILIARYEFFECTSLOTFV)qalGetProcAddress("alAuxiliaryEffectSlotfv");
+	qalGenFilters = (LPALGENFILTERS)qalGetProcAddress("alGenFilters");
+	qalDeleteFilters = (LPALDELETEFILTERS)qalGetProcAddress("alDeleteFilters");
+	qalIsFilter = (LPALISFILTER)qalGetProcAddress("alIsFilter");
+	qalFilteri = (LPALFILTERI)qalGetProcAddress("alFilteri");
+	qalFilterf = (LPALFILTERF)qalGetProcAddress("alFilterf");
 }
 #else
 qboolean QAL_Init(const char *libname)

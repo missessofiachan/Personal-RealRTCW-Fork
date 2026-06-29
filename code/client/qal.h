@@ -146,6 +146,11 @@ extern LPALDELETEAUXILIARYEFFECTSLOTS qalDeleteAuxiliaryEffectSlots;
 extern LPALAUXILIARYEFFECTSLOTI qalAuxiliaryEffectSloti;
 extern LPALAUXILIARYEFFECTSLOTF qalAuxiliaryEffectSlotf;
 extern LPALAUXILIARYEFFECTSLOTFV qalAuxiliaryEffectSlotfv;
+extern LPALGENFILTERS qalGenFilters;
+extern LPALDELETEFILTERS qalDeleteFilters;
+extern LPALISFILTER qalIsFilter;
+extern LPALFILTERI qalFilteri;
+extern LPALFILTERF qalFilterf;
 
 /* HRTF functions (ALC_SOFT_HRTF) */
 extern LPALCRESETDEVICESOFT qalcResetDeviceSOFT;
@@ -279,6 +284,11 @@ extern LPALCCAPTURESAMPLES qalcCaptureSamples;
 #define qalAuxiliaryEffectSloti alAuxiliaryEffectSloti
 #define qalAuxiliaryEffectSlotf alAuxiliaryEffectSlotf
 #define qalAuxiliaryEffectSlotfv alAuxiliaryEffectSlotfv
+#define qalGenFilters alGenFilters
+#define qalDeleteFilters alDeleteFilters
+#define qalIsFilter alIsFilter
+#define qalFilteri alFilteri
+#define qalFilterf alFilterf
 
 /* HRTF fallback macros */
 #define qalcResetDeviceSOFT alcResetDeviceSOFT

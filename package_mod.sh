@@ -63,11 +63,12 @@ Includes realistic stealth-breaking AI detection rules:
 - Ambient room glow alerts nearby AI within 250 units.
 EOF
 
-# 4. Zip the description file using Store method (no compression) into pk3
+# 4. Zip the description file and ui folder using Store method (no compression) into pk3
 echo -e "Packaging $ZIP_NAME..."
+cp -r "$SCRIPT_DIR/ui" "$OUTPUT_DIR/ui"
 cd "$OUTPUT_DIR"
-zip -0 "$ZIP_NAME" description.txt
-rm description.txt
+zip -r -0 "$ZIP_NAME" description.txt ui
+rm -rf description.txt ui
 cd "$SCRIPT_DIR"
 
 echo -e "${GREEN}Mod successfully packaged!${NC}"

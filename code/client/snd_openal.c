@@ -50,6 +50,9 @@ cvar_t *s_alReverbPreset;
 cvar_t *s_alReverb;
 cvar_t *s_alReverbGain;
 cvar_t *s_alHRTF;
+cvar_t *s_alHRTFProfile;
+cvar_t *s_alHRTFProfileName;
+cvar_t *s_alAvailableHRTFs;
 
 static qboolean enumeration_ext = qfalse;
 static qboolean enumeration_all_ext = qfalse;
@@ -1012,6 +1015,8 @@ typedef struct src_s
 
   int       updated;
 
+  ALuint    directFilter;   // EFX filter for occlusion/obstruction
+
 } src_t;
 
 #ifdef __APPLE__
@@ -1149,7 +1154,7 @@ static qboolean S_AL_HearingThroughEntity( int entityNum )
    S_AL_SrcInit
    =================
    */
-  static
+static
 qboolean S_AL_SrcInit( void )
 {
   int i;
@@ -1174,6 +1179,18 @@ qboolean S_AL_SrcInit( void )
     qalGenSources(1, &srcList[i].alSource);
     if(qalGetError() != AL_NO_ERROR)
       break;
+
+    // Generate EFX direct filter for this source if supported
+    srcList[i].directFilter = 0;
+    if (qalGenFilters != NULL)
+    {
+      qalGenFilters(1, &srcList[i].directFilter);
+      if (qalGetError() != AL_NO_ERROR)
+      {
+        srcList[i].directFilter = 0;
+      }
+    }
+
     srcCount++;
   }
 
@@ -1210,8 +1227,16 @@ void S_AL_SrcShutdown( void )
     if(curSource->entity > 0)
       entityList[curSource->entity].srcAllocated = qfalse;
 
-    qalSourceStop(srcList[i].alSource);
-    qalDeleteSources(1, &srcList[i].alSource);
+    if(srcList[i].alSource)
+    {
+      qalSourceStop(srcList[i].alSource);
+      if (qalDeleteFilters != NULL && srcList[i].directFilter)
+      {
+        qalDeleteFilters(1, &srcList[i].directFilter);
+        srcList[i].directFilter = 0;
+      }
+      qalDeleteSources(1, &srcList[i].alSource);
+    }
   }
 
   memset(srcList, 0, sizeof(srcList));
@@ -2199,6 +2224,34 @@ void S_AL_SrcUpdate( void )
       S_AL_ScaleGain(curSource, entityList[entityNum].origin);
     }
 
+    // Per-Source Obstruction & Occlusion (Audio)
+    if (!state && !curSource->local && !curSource->isStream && curSource->isPlaying)
+    {
+      vec3_t sourcePos;
+      if (curSource->isTracking) {
+        VectorCopy(entityList[entityNum].origin, sourcePos);
+      } else {
+        qalGetSourcefv(curSource->alSource, AL_POSITION, sourcePos);
+      }
+
+      if (qalGenFilters && curSource->directFilter)
+      {
+        trace_t tr;
+        CM_BoxTrace(&tr, lastListenerOrigin, sourcePos, NULL, NULL, 0, MASK_SOLID, qfalse);
+        if (tr.fraction < 1.0f)
+        {
+          qalFilteri(curSource->directFilter, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
+          qalFilterf(curSource->directFilter, AL_LOWPASS_GAIN, 0.8f);
+          qalFilterf(curSource->directFilter, AL_LOWPASS_GAINHF, 0.25f);
+          qalSourcei(curSource->alSource, AL_DIRECT_FILTER, curSource->directFilter);
+        }
+        else
+        {
+          qalSourcei(curSource->alSource, AL_DIRECT_FILTER, AL_FILTER_NULL);
+        }
+      }
+    }
+
     if ( ( entityNum < MAX_CLIENTS) && (entityChannel == CHAN_VOICE ))
     {
       if(offset_ext && knownSfx[curSource->sfx].voice ){
@@ -3038,9 +3091,16 @@ void S_AL_Update( void )
         Com_Printf("HRTF toggled: %s\n", hrtfState ? "^2Enabled" : "^1Disabled");
         if (hrtfState && qalcGetStringiSOFT)
         {
-          const ALCchar *hrtfName = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, 0);
+          const ALCchar *hrtfName = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, s_alHRTFProfile->integer);
           if (hrtfName)
+          {
             Com_Printf("HRTF Profile: %s\n", hrtfName);
+            Cvar_Set("s_alHRTFProfileName", hrtfName);
+          }
+        }
+        else
+        {
+          Cvar_Set("s_alHRTFProfileName", "None");
         }
       }
       else
@@ -3053,6 +3113,38 @@ void S_AL_Update( void )
       Com_Printf("HRTF change requires 'snd_restart' (alcResetDeviceSOFT not available).\n");
     }
     s_alHRTF->modified = qfalse;
+  }
+
+  // Runtime HRTF Profile change
+  if (s_alHRTFProfile->modified)
+  {
+    if (qalcResetDeviceSOFT && qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF"))
+    {
+      ALCint attribs[] = {
+        ALC_HRTF_SOFT, s_alHRTF->integer ? ALC_TRUE : ALC_FALSE,
+        ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer,
+        0
+      };
+      if (qalcResetDeviceSOFT(alDevice, attribs))
+      {
+        ALCint hrtfState = 0;
+        qalcGetIntegerv(alDevice, ALC_HRTF_SOFT, 1, &hrtfState);
+        if (hrtfState && qalcGetStringiSOFT)
+        {
+          const ALCchar *hrtfName = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, s_alHRTFProfile->integer);
+          if (hrtfName)
+          {
+            Com_Printf("HRTF Profile changed to: %s\n", hrtfName);
+            Cvar_Set("s_alHRTFProfileName", hrtfName);
+          }
+        }
+      }
+      else
+      {
+        Com_Printf(S_COLOR_YELLOW "WARNING: Failed to change HRTF Profile. Try 'snd_restart'.\n");
+      }
+    }
+    s_alHRTFProfile->modified = qfalse;
   }
 
   // Clear the modified flags on the other cvars
@@ -3239,10 +3331,111 @@ void S_AL_Shutdown( void )
     streamSources[i] = 0;
   }
 
+  Cmd_RemoveCommand("cycle_al_device");
+  Cmd_RemoveCommand("cycle_al_hrtf");
+
   QAL_Shutdown();
 }
 
 #endif
+
+#ifndef ALC_HRTF_SOFT
+#define ALC_HRTF_SOFT 0x1992
+#endif
+#ifndef ALC_NUM_HRTF_SPECIFIERS_SOFT
+#define ALC_NUM_HRTF_SPECIFIERS_SOFT 0x1994
+#endif
+#ifndef ALC_HRTF_SPECIFIER_SOFT
+#define ALC_HRTF_SPECIFIER_SOFT 0x1995
+#endif
+#ifndef ALC_HRTF_ID_SOFT
+#define ALC_HRTF_ID_SOFT 0x1996
+#endif
+
+/*
+=================
+S_AL_CycleDevice_f
+=================
+*/
+static void S_AL_CycleDevice_f(void)
+{
+  const char *available = s_alAvailableDevices->string;
+  const char *current = s_alDevice->string;
+  char nextDevice[256] = "";
+  const char *p = available;
+  qboolean foundCurrent = qfalse;
+
+  if (!available || !*available)
+  {
+    Com_Printf("No available OpenAL devices.\n");
+    return;
+  }
+
+  while (*p)
+  {
+    char line[256];
+    int len = 0;
+    while (*p && *p != '\n' && len < sizeof(line) - 1)
+    {
+      line[len++] = *p++;
+    }
+    line[len] = '\0';
+    if (*p == '\n') p++;
+
+    if (foundCurrent)
+    {
+      Q_strncpyz(nextDevice, line, sizeof(nextDevice));
+      break;
+    }
+
+    if (Q_stricmp(line, current) == 0)
+    {
+      foundCurrent = qtrue;
+    }
+  }
+
+  if (!nextDevice[0] && available && *available)
+  {
+    const char *src = available;
+    int len = 0;
+    while (*src && *src != '\n' && len < sizeof(nextDevice) - 1)
+    {
+      nextDevice[len++] = *src++;
+    }
+    nextDevice[len] = '\0';
+  }
+
+  if (nextDevice[0])
+  {
+    Cvar_Set("s_alDevice", nextDevice);
+    Com_Printf("Selected OpenAL Device: %s (Apply with 'snd_restart')\n", nextDevice);
+  }
+}
+
+/*
+=================
+S_AL_CycleHRTF_f
+=================
+*/
+static void S_AL_CycleHRTF_f(void)
+{
+  if (!qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF"))
+  {
+    Com_Printf("HRTF is not supported on this device.\n");
+    return;
+  }
+  ALCint num_hrtfs = 0;
+  qalcGetIntegerv(alDevice, ALC_NUM_HRTF_SPECIFIERS_SOFT, 1, &num_hrtfs);
+  if (num_hrtfs <= 0)
+  {
+    Com_Printf("No HRTF profiles found.\n");
+    return;
+  }
+
+  int nextProfile = (s_alHRTFProfile->integer + 1) % num_hrtfs;
+  Cvar_SetValue("s_alHRTFProfile", nextProfile);
+  Com_Printf("Selected HRTF Profile index: %d (Applying on the fly...)\n", nextProfile);
+}
 
 /*
    =================
@@ -3283,6 +3476,9 @@ qboolean S_AL_Init( soundInterface_t *si )
   s_alReverb = Cvar_Get("s_alReverb", "1", CVAR_ARCHIVE);
   s_alReverbGain = Cvar_Get("s_alReverbGain", "1.0", CVAR_ARCHIVE);
   s_alHRTF = Cvar_Get("s_alHRTF", "0", CVAR_ARCHIVE);
+  s_alHRTFProfile = Cvar_Get("s_alHRTFProfile", "0", CVAR_ARCHIVE);
+  s_alHRTFProfileName = Cvar_Get("s_alHRTFProfileName", "None", CVAR_ROM);
+  s_alAvailableHRTFs = Cvar_Get("s_alAvailableHRTFs", "", CVAR_ROM | CVAR_NORESTART);
 
   s_alDriver = Cvar_Get( "s_alDriver", ALDRIVER_DEFAULT, CVAR_LATCH | CVAR_PROTECTED );
 
@@ -3385,7 +3581,7 @@ qboolean S_AL_Init( soundInterface_t *si )
       // Create OpenAL context
       if ( qalcIsExtensionPresent( alDevice, "ALC_EXT_EFX" ) ) {
         if ( s_alHRTF->integer && qalcIsExtensionPresent( alDevice, "ALC_SOFT_HRTF" ) ) {
-          ALCint attribs[5] = { ALC_MAX_AUXILIARY_SENDS, 2, ALC_HRTF_SOFT, ALC_TRUE, 0 };
+          ALCint attribs[7] = { ALC_MAX_AUXILIARY_SENDS, 2, ALC_HRTF_SOFT, ALC_TRUE, ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer, 0 };
           alContext = qalcCreateContext( alDevice, attribs );
         } else {
           ALCint attribs[3] = { ALC_MAX_AUXILIARY_SENDS, 2, 0 };
@@ -3393,7 +3589,7 @@ qboolean S_AL_Init( soundInterface_t *si )
         }
       } else {
         if ( s_alHRTF->integer && qalcIsExtensionPresent( alDevice, "ALC_SOFT_HRTF" ) ) {
-          ALCint attribs[3] = { ALC_HRTF_SOFT, ALC_TRUE, 0 };
+          ALCint attribs[5] = { ALC_HRTF_SOFT, ALC_TRUE, ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer, 0 };
           alContext = qalcCreateContext( alDevice, attribs );
         } else {
           alContext = qalcCreateContext( alDevice, NULL );
@@ -3407,6 +3603,38 @@ qboolean S_AL_Init( soundInterface_t *si )
         return qfalse;
       }
       qalcMakeContextCurrent( alContext );
+
+      // Enumerate and populate available HRTFs
+      if (qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF") && qalcGetStringiSOFT)
+      {
+        ALCint num_hrtfs = 0;
+        qalcGetIntegerv(alDevice, ALC_NUM_HRTF_SPECIFIERS_SOFT, 1, &num_hrtfs);
+        char hrtfNames[16384] = "";
+        for (i = 0; i < num_hrtfs; i++)
+        {
+          const ALCchar *hrtfName = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, i);
+          if (hrtfName)
+          {
+            Q_strcat(hrtfNames, sizeof(hrtfNames), hrtfName);
+            Q_strcat(hrtfNames, sizeof(hrtfNames), "\n");
+          }
+        }
+        s_alAvailableHRTFs = Cvar_Get("s_alAvailableHRTFs", hrtfNames, CVAR_ROM | CVAR_NORESTART);
+
+        // Also set active profile name CVar
+        if (s_alHRTF->integer)
+        {
+          const ALCchar *activeHrtf = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, s_alHRTFProfile->integer);
+          Cvar_Set("s_alHRTFProfileName", activeHrtf ? activeHrtf : "Default");
+        }
+        else
+        {
+          Cvar_Set("s_alHRTFProfileName", "None");
+        }
+      }
+
+      Cmd_AddCommand("cycle_al_device", S_AL_CycleDevice_f);
+      Cmd_AddCommand("cycle_al_hrtf", S_AL_CycleHRTF_f);
 
       offset_ext = qalIsExtensionPresent("AL_EXT_OFFSET");
 
