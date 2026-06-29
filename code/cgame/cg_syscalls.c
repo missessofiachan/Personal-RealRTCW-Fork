@@ -551,3 +551,11 @@ void *trap_Alloc( int size ) {
 qhandle_t trap_R_RegisterSmartSkin( const char *name, const char *mapName, qboolean upgraded ) {
 	return syscall( CG_R_REGISTERSMARTSKIN, name, mapName, upgraded );
 }
+
+void trap_QueueJob( void (*work)(void*), void *arg ) {
+	syscall( CG_QUEUE_JOB, work, arg );
+}
+
+void trap_WaitJobs( void ) {
+	syscall( CG_WAIT_JOBS );
+}

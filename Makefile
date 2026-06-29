@@ -2030,6 +2030,7 @@ Q3OBJ = \
   $(B)/client/sdl_snd.o \
   \
   $(B)/client/con_log.o \
+  $(B)/client/gp_jobsystem.o \
   $(B)/client/sys_main.o
 
 ifdef MINGW

@@ -2732,3 +2732,6 @@ qboolean    trap_GetModelInfo( int clientNum, char *modelName, animModelInfo_t *
 void		*trap_Alloc( int size );
 
 qhandle_t   trap_R_RegisterSmartSkin( const char *name, const char *mapName, qboolean upgraded );
+
+void trap_QueueJob( void (*work)(void*), void *arg );
+void trap_WaitJobs( void );

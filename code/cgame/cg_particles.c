@@ -75,6 +75,11 @@ typedef struct particle_s
 
 	int accumroll;
 
+	// Threaded rendering temp fields
+	vec3_t render_org;
+	float render_alpha;
+	qboolean dead;
+
 } cparticle_t;
 
 typedef enum
@@ -915,16 +920,78 @@ void CG_AddParticleToScene( cparticle_t *p, vec3_t org, float alpha ) {
 // Ridah, made this static so it doesn't interfere with other files
 static float roll = 0.0;
 
+typedef struct {
+	cparticle_t **list;
+	int start;
+	int end;
+	int cg_time;
+} particle_job_t;
+
+static void ParticleUpdate_Job( void *arg ) {
+	particle_job_t *job = (particle_job_t *)arg;
+	for ( int i = job->start; i < job->end; i++ ) {
+		cparticle_t *p = job->list[i];
+		float time = ( job->cg_time - p->time ) * 0.001;
+
+		float alpha = p->alpha + time * p->alphavel;
+		if ( alpha <= 0 ) {
+			p->dead = qtrue;
+			continue;
+		}
+
+		if ( p->type == P_SMOKE || p->type == P_ANIM || p->type == P_BLEED || p->type == P_SMOKE_IMPACT ) {
+			if ( job->cg_time > p->endtime ) {
+				p->dead = qtrue;
+				continue;
+			}
+		}
+
+		if ( p->type == P_WEATHER_FLURRY ) {
+			if ( job->cg_time > p->endtime ) {
+				p->dead = qtrue;
+				continue;
+			}
+		}
+
+		if ( p->type == P_FLAT_SCALEUP_FADE ) {
+			if ( job->cg_time > p->endtime ) {
+				p->dead = qtrue;
+				continue;
+			}
+		}
+
+		if ( ( p->type == P_BAT || p->type == P_SPRITE ) && p->endtime < 0 ) {
+			p->dead = qtrue;
+			p->render_alpha = alpha;
+			VectorCopy( p->org, p->render_org );
+			continue;
+		}
+
+		if ( alpha > 1.0 ) {
+			alpha = 1;
+		}
+
+		p->dead = qfalse;
+		p->render_alpha = alpha;
+
+		float time2 = time * time;
+		p->render_org[0] = p->org[0] + p->vel[0] * time + p->accel[0] * time2;
+		p->render_org[1] = p->org[1] + p->vel[1] * time + p->accel[1] * time2;
+		p->render_org[2] = p->org[2] + p->vel[2] * time + p->accel[2] * time2;
+	}
+}
+
+#define MAX_ACTIVE_PARTICLES 65536
+static cparticle_t *activeList[MAX_ACTIVE_PARTICLES];
+static particle_job_t particleJobs[16];
+
 /*
 ===============
 CG_AddParticles
 ===============
 */
 void CG_AddParticles( void ) {
-	cparticle_t     *p, *next;
-	float alpha;
-	float time, time2;
-	vec3_t org;
+	cparticle_t     *p;
 	cparticle_t     *active, *tail;
 	vec3_t rotate_ang;
 
@@ -943,67 +1010,43 @@ void CG_AddParticles( void ) {
 
 	oldtime = cg.time;
 
+	int numActive = 0;
+	for ( p = active_particles ; p ; p = p->next ) {
+		if ( numActive < MAX_ACTIVE_PARTICLES ) {
+			activeList[numActive++] = p;
+		}
+	}
+
+	int numJobs = 4;
+	int chunkSize = numActive / numJobs;
+	if ( chunkSize < 64 ) {
+		particle_job_t job;
+		job.list = activeList;
+		job.start = 0;
+		job.end = numActive;
+		job.cg_time = cg.time;
+		ParticleUpdate_Job(&job);
+	} else {
+		for ( int i = 0; i < numJobs; i++ ) {
+			particleJobs[i].list = activeList;
+			particleJobs[i].start = i * chunkSize;
+			particleJobs[i].end = ( i == numJobs - 1 ) ? numActive : ( i + 1 ) * chunkSize;
+			particleJobs[i].cg_time = cg.time;
+			trap_QueueJob( ParticleUpdate_Job, &particleJobs[i] );
+		}
+		trap_WaitJobs();
+	}
+
 	active = NULL;
 	tail = NULL;
 
-	for ( p = active_particles ; p ; p = next )
-	{
+	for ( int i = 0; i < numActive; i++ ) {
+		p = activeList[i];
 
-		next = p->next;
-
-		time = ( cg.time - p->time ) * 0.001;
-
-		alpha = p->alpha + time * p->alphavel;
-		if ( alpha <= 0 ) { // faded out
-			p->next = free_particles;
-			free_particles = p;
-			p->type = 0;
-			p->color = 0;
-			p->alpha = 0;
-			continue;
-		}
-
-		if ( p->type == P_SMOKE || p->type == P_ANIM || p->type == P_BLEED || p->type == P_SMOKE_IMPACT ) {
-			if ( cg.time > p->endtime ) {
-				p->next = free_particles;
-				free_particles = p;
-				p->type = 0;
-				p->color = 0;
-				p->alpha = 0;
-
-				continue;
+		if ( p->dead ) {
+			if ( ( p->type == P_BAT || p->type == P_SPRITE ) && p->endtime < 0 ) {
+				CG_AddParticleToScene( p, p->render_org, p->render_alpha );
 			}
-
-		}
-
-		if ( p->type == P_WEATHER_FLURRY ) {
-			if ( cg.time > p->endtime ) {
-				p->next = free_particles;
-				free_particles = p;
-				p->type = 0;
-				p->color = 0;
-				p->alpha = 0;
-
-				continue;
-			}
-		}
-
-
-		if ( p->type == P_FLAT_SCALEUP_FADE ) {
-			if ( cg.time > p->endtime ) {
-				p->next = free_particles;
-				free_particles = p;
-				p->type = 0;
-				p->color = 0;
-				p->alpha = 0;
-				continue;
-			}
-
-		}
-
-		if ( ( p->type == P_BAT || p->type == P_SPRITE ) && p->endtime < 0 ) {
-			// temporary sprite
-			CG_AddParticleToScene( p, p->org, alpha );
 			p->next = free_particles;
 			free_particles = p;
 			p->type = 0;
@@ -1015,23 +1058,12 @@ void CG_AddParticles( void ) {
 		p->next = NULL;
 		if ( !tail ) {
 			active = tail = p;
-		} else
-		{
+		} else {
 			tail->next = p;
 			tail = p;
 		}
 
-		if ( alpha > 1.0 ) {
-			alpha = 1;
-		}
-
-		time2 = time * time;
-
-		org[0] = p->org[0] + p->vel[0] * time + p->accel[0] * time2;
-		org[1] = p->org[1] + p->vel[1] * time + p->accel[1] * time2;
-		org[2] = p->org[2] + p->vel[2] * time + p->accel[2] * time2;
-
-		CG_AddParticleToScene( p, org, alpha );
+		CG_AddParticleToScene( p, p->render_org, p->render_alpha );
 	}
 
 	active_particles = active;
@@ -1039,7 +1071,7 @@ void CG_AddParticles( void ) {
 
 /*
 ======================
-CG_AddParticles
+CG_ParticleSnowFlurry
 ======================
 */
 void CG_ParticleSnowFlurry( qhandle_t pshader, centity_t *cent ) {

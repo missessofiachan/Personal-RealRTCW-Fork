@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 // cl_cgame.c  -- client system interaction with client game
 
 #include "client.h"
+#include "../qcommon/gp_jobsystem.h"
 
 #include "../botlib/botlib.h"
 
@@ -875,6 +876,17 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return VM_Alloc( args[1] );
 	case CG_R_REGISTERSMARTSKIN:
 		return re.RegisterSmartSkin(VMA(1), VMA(2), args[3]);
+	case CG_QUEUE_JOB:
+		if ( VM_IsNative( cgvm ) ) {
+			Sys_QueueJob( (void (*)(void*))args[1], VMA( 2 ) );
+		} else {
+			void (*work)(void*) = (void (*)(void*))args[1];
+			work( VMA(2) );
+		}
+		return 0;
+	case CG_WAIT_JOBS:
+		Sys_WaitJobs();
+		return 0;
 		//----(SA)	added
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );

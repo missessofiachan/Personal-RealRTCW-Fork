@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "q_shared.h"
 #include "qcommon.h"
+#include "gp_jobsystem.h"
 #include <setjmp.h>
 #ifndef _WIN32
 #include <netinet/in.h>
@@ -2296,6 +2297,9 @@ void Com_Init( char *commandLine ) {
 	// Clear queues
 	Com_Memset( &eventQueue[ 0 ], 0, MAX_QUEUED_EVENTS * sizeof( sysEvent_t ) );
 
+	// Initialize Multi-threaded Job System
+	Sys_InitJobSystem();
+
 	// initialize the weak pseudo-random number generator for use later.
 	Com_InitRand();
 
@@ -2955,6 +2959,8 @@ void Com_Shutdown( void ) {
 		FS_FCloseFile( pipefile );
 		FS_HomeRemove( com_pipefile->string );
 	}
+
+	Sys_ShutdownJobSystem();
 
 }
 

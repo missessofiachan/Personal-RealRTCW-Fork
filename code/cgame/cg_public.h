@@ -221,7 +221,10 @@ typedef enum {
 	// New in IORTCW
 	CG_ALLOC = 900,
 
-	CG_R_REGISTERSMARTSKIN
+	CG_R_REGISTERSMARTSKIN,
+
+	CG_QUEUE_JOB,
+	CG_WAIT_JOBS
 
 } cgameImport_t;
 
