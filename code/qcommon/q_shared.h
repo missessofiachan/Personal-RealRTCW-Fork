@@ -612,6 +612,11 @@ float Q_fabs( float f );
 float Q_rsqrt( float f );       // reciprocal square root
 #endif // idppc
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#include <xmmintrin.h>
+#define Q_HAS_SIMD 1
+#endif
+
 #define SQRTFAST( x ) ( 1.0f / Q_rsqrt( x ) )
 
 signed char ClampChar( int i );
@@ -695,31 +700,94 @@ static ID_INLINE int VectorCompare( const vec3_t v1, const vec3_t v2 ) {
 }
 
 static ID_INLINE vec_t VectorLength( const vec3_t v ) {
+#if Q_HAS_SIMD
+	__m128 x = _mm_loadu_ps(v);
+	__m128 mul = _mm_mul_ps(x, x);
+	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
+	__m128 sqrt = _mm_sqrt_ss(sum);
+	float len;
+	_mm_store_ss(&len, sqrt);
+	return len;
+#else
 	return (vec_t)sqrt (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+#endif
 }
 
 static ID_INLINE vec_t VectorLengthSquared( const vec3_t v ) {
+#if Q_HAS_SIMD
+	__m128 x = _mm_loadu_ps(v);
+	__m128 mul = _mm_mul_ps(x, x);
+	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
+	float len2;
+	_mm_store_ss(&len2, sum);
+	return len2;
+#else
 	return (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+#endif
 }
 
 static ID_INLINE vec_t Distance( const vec3_t p1, const vec3_t p2 ) {
+#if Q_HAS_SIMD
+	__m128 v1 = _mm_loadu_ps(p1);
+	__m128 v2 = _mm_loadu_ps(p2);
+	__m128 diff = _mm_sub_ps(v2, v1);
+	__m128 mul = _mm_mul_ps(diff, diff);
+	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
+	__m128 sqrt = _mm_sqrt_ss(sum);
+	float dist;
+	_mm_store_ss(&dist, sqrt);
+	return dist;
+#else
 	vec3_t	v;
 
 	VectorSubtract (p2, p1, v);
 	return VectorLength( v );
+#endif
 }
 
 static ID_INLINE vec_t DistanceSquared( const vec3_t p1, const vec3_t p2 ) {
+#if Q_HAS_SIMD
+	__m128 v1 = _mm_loadu_ps(p1);
+	__m128 v2 = _mm_loadu_ps(p2);
+	__m128 diff = _mm_sub_ps(v2, v1);
+	__m128 mul = _mm_mul_ps(diff, diff);
+	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
+	float dist2;
+	_mm_store_ss(&dist2, sum);
+	return dist2;
+#else
 	vec3_t	v;
 
 	VectorSubtract (p2, p1, v);
 	return v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+#endif
 }
 
 // fast vector normalize routine that does not check to make sure
 // that length != 0, nor does it return length, uses rsqrt approximation
 static ID_INLINE void VectorNormalizeFast( vec3_t v )
 {
+#if Q_HAS_SIMD
+	__m128 x = _mm_loadu_ps(v);
+	__m128 mul = _mm_mul_ps(x, x);
+	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
+	__m128 rsqrt = _mm_rsqrt_ss(sum);
+	__m128 rsqrt_v = _mm_shuffle_ps(rsqrt, rsqrt, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 norm = _mm_mul_ps(x, rsqrt_v);
+	_mm_store_ss(&v[0], norm);
+	_mm_store_ss(&v[1], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(1, 1, 1, 1)));
+	_mm_store_ss(&v[2], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(2, 2, 2, 2)));
+#else
 	float ilength;
 
 	ilength = Q_rsqrt( DotProduct( v, v ) );
@@ -727,6 +795,7 @@ static ID_INLINE void VectorNormalizeFast( vec3_t v )
 	v[0] *= ilength;
 	v[1] *= ilength;
 	v[2] *= ilength;
+#endif
 }
 
 static ID_INLINE void VectorInverse( vec3_t v ){
@@ -736,9 +805,22 @@ static ID_INLINE void VectorInverse( vec3_t v ){
 }
 
 static ID_INLINE void CrossProduct( const vec3_t v1, const vec3_t v2, vec3_t cross ) {
+#if Q_HAS_SIMD
+	__m128 a = _mm_loadu_ps(v1);
+	__m128 b = _mm_loadu_ps(v2);
+	__m128 a_yzx = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 0, 2, 1));
+	__m128 b_zxy = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 1, 0, 2));
+	__m128 a_zxy = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 1, 0, 2));
+	__m128 b_yzx = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 0, 2, 1));
+	__m128 r = _mm_sub_ps(_mm_mul_ps(a_yzx, b_zxy), _mm_mul_ps(a_zxy, b_yzx));
+	_mm_store_ss(&cross[0], r);
+	_mm_store_ss(&cross[1], _mm_shuffle_ps(r, r, _MM_SHUFFLE(1, 1, 1, 1)));
+	_mm_store_ss(&cross[2], _mm_shuffle_ps(r, r, _MM_SHUFFLE(2, 2, 2, 2)));
+#else
 	cross[0] = v1[1]*v2[2] - v1[2]*v2[1];
 	cross[1] = v1[2]*v2[0] - v1[0]*v2[2];
 	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
+#endif
 }
 
 #else

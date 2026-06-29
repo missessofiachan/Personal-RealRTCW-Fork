@@ -1160,23 +1160,25 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Toggle Discord integration to show your game status on Discord." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
-	    name sofiasettings
-		group grpsystem
-	    text "FLASHLIGHT SETTINGS"
-	    textscale .22
-		decoration
-	    style WINDOW_STYLE_FILLED
-	    rect 190 80 290 12
-	    textalign 1
+		name sofiasettings
 		textfont UI_FONT_BIG
-	    textalignx 22
-	    textaligny 14
-	    border 1
-	    forecolor 0.2 0.8 0.2 1
-	    visible 0
+		group grpsystem
+		text "FLASHLIGHT SETTINGS"
+		textscale .22
+		decoration
+		style WINDOW_STYLE_FILLED
+		rect 190 80 290 12
+		textalign 1
+		textalignx 22
+		textaligny 14
+		border 1
+		forecolor 0.2 0.8 0.2 1
+		visible 0
 	}
 
 	itemDef {
@@ -1195,6 +1197,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Adjust the sway/movement speed of the flashlight beam." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1213,6 +1217,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Adjust the size/radius of the flashlight beam." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1231,8 +1237,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
-		mouseenter { show keyBindStatus }
-		mouseexit { hide keyBindStatus }
+		mouseenter { show keyBindStatus ; setCvar "ui_sofia_desc" "Bind a key to toggle your flashlight on and off." }
+		mouseexit { hide keyBindStatus ; setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1251,6 +1257,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Adjust the Red balance of the flashlight color." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1269,6 +1277,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Adjust the Green balance of the flashlight color." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1287,23 +1297,24 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Adjust the Blue balance of the flashlight color." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
-	    name sofiasettings
+		name sofiasettings
 		group grpsystem
-	    text "AUDIO SETTINGS"
-	    textscale .22
+		text "AUDIO SETTINGS"
+		textscale .22
 		decoration
-	    style WINDOW_STYLE_FILLED
-	    rect 190 190 290 12
-	    textalign 1
-		textfont UI_FONT_BIG
-	    textalignx 22
-	    textaligny 14
-	    border 1
-	    forecolor 0.2 0.8 0.2 1
-	    visible 0
+		style WINDOW_STYLE_FILLED
+		rect 190 190 290 12
+		textalign 1
+		textalignx 22
+		textaligny 14
+		border 1
+		forecolor 0.2 0.8 0.2 1
+		visible 0
 	}
 
 	itemDef {
@@ -1322,6 +1333,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Toggle Head-Related Transfer Function (HRTF) 3D audio." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1358,6 +1371,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		forecolor 1 1 1 1
 		visible 0 
 		action { play "sound/misc/kcaction.wav" ; cmd "cycle_al_hrtf" }
+		mouseenter { setCvar "ui_sofia_desc" "Cycle available HRTF profiles for optimal 3D positioning." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1394,6 +1409,8 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		forecolor 1 1 1 1
 		visible 0 
 		action { play "sound/misc/kcaction.wav" ; cmd "cycle_al_device" }
+		mouseenter { setCvar "ui_sofia_desc" "Cycle through your active system audio output devices." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
@@ -1412,15 +1429,17 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Toggle OpenAL EFX environmental reverb/echoes." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
 	itemDef {
 		name sofiasettings
 		textfont UI_FONT_BIG
 		group grpsystem
-		type ITEM_TYPE_SLIDER
-		text "Reverb Intensity"
-		cvarfloat "s_alReverbGain" 1.0 0 2.0
+		type ITEM_TYPE_YESNO
+		text "Audio Occlusion"
+		cvar "s_alOcclusion"
 		rect 82 265 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
@@ -1430,6 +1449,63 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Toggle low-pass muffling when sounds are behind walls." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_YESNO
+		text "Dynamic Reverb"
+		cvar "s_alDynamicReverb"
+		rect 82 280 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Enable dynamic raytraced room acoustics using BSP geometry." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		type ITEM_TYPE_SLIDER
+		text "Reverb Intensity"
+		cvarfloat "s_alReverbGain" 1.0 0 2.0
+		rect 82 295 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 142
+		textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+		forecolor 1 1 1 1
+		visible 0 
+		mouseenter { setCvar "ui_sofia_desc" "Adjust the overall volume and strength of room echoes." }
+		mouseexit { setCvar "ui_sofia_desc" "" }
+	}
+
+	itemDef {
+		name sofiasettings
+		textfont UI_FONT_BIG
+		group grpsystem
+		cvar "ui_sofia_desc"
+		rect 82 313 290 12
+		textalign ITEM_ALIGN_CENTER
+		textalignx 145
+		textaligny 10
+		textscale .20 
+		forecolor 0.2 0.8 0.2 1
+		visible 0 
+		decoration
 	}
 
 

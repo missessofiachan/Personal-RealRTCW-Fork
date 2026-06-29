@@ -16,5 +16,6 @@ void S_EFX_SetPreset(int presetNum);
 void S_EFX_AttachSource(unsigned int alSource);
 void S_EFX_Update(void);
 void S_EFX_UpdateGain(float gain);
+void S_EFX_UpdateDynamicReverb(void);
 
 #endif // __SND_EFX_H__

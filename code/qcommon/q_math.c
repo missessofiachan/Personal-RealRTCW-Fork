@@ -648,9 +648,6 @@ Returns 1, 2, or 1 + 2
 */
 int BoxOnPlaneSide(vec3_t emins, vec3_t emaxs, struct cplane_s *p)
 {
-	float	dist[2];
-	int		sides, b, i;
-
 	// fast axial cases
 	if ( p->type < 3 ) {
 		if ( p->dist <= emins[p->type] ) {
@@ -662,7 +659,49 @@ int BoxOnPlaneSide(vec3_t emins, vec3_t emaxs, struct cplane_s *p)
 		return 3;
 	}
 
+#if Q_HAS_SIMD
+	if (p->signbits < 8)
+	{
+		__m128 v_emins = _mm_loadu_ps(emins);
+		__m128 v_emaxs = _mm_loadu_ps(emaxs);
+		__m128 v_normal = _mm_loadu_ps(p->normal);
+		
+		unsigned int m0 = (p->signbits & 1) ? 0xFFFFFFFF : 0;
+		unsigned int m1 = (p->signbits & 2) ? 0xFFFFFFFF : 0;
+		unsigned int m2 = (p->signbits & 4) ? 0xFFFFFFFF : 0;
+		__m128 mask = _mm_set_ps(0.0f, *(float*)&m2, *(float*)&m1, *(float*)&m0);
+		
+		__m128 v_dist0 = _mm_or_ps(_mm_and_ps(mask, v_emins), _mm_andnot_ps(mask, v_emaxs));
+		__m128 v_dist1 = _mm_or_ps(_mm_and_ps(mask, v_emaxs), _mm_andnot_ps(mask, v_emins));
+		
+		__m128 mul0 = _mm_mul_ps(v_normal, v_dist0);
+		__m128 mul1 = _mm_mul_ps(v_normal, v_dist1);
+		
+		__m128 shuf0_1 = _mm_shuffle_ps(mul0, mul0, _MM_SHUFFLE(1, 1, 1, 1));
+		__m128 shuf0_2 = _mm_shuffle_ps(mul0, mul0, _MM_SHUFFLE(2, 2, 2, 2));
+		__m128 sum0 = _mm_add_ss(mul0, _mm_add_ss(shuf0_1, shuf0_2));
+		
+		__m128 shuf1_1 = _mm_shuffle_ps(mul1, mul1, _MM_SHUFFLE(1, 1, 1, 1));
+		__m128 shuf1_2 = _mm_shuffle_ps(mul1, mul1, _MM_SHUFFLE(2, 2, 2, 2));
+		__m128 sum1 = _mm_add_ss(mul1, _mm_add_ss(shuf1_1, shuf1_2));
+		
+		float dist0, dist1;
+		_mm_store_ss(&dist0, sum0);
+		_mm_store_ss(&dist1, sum1);
+		
+		int sides = 0;
+		if (dist0 >= p->dist)
+			sides = 1;
+		if (dist1 < p->dist)
+			sides |= 2;
+			
+		return sides;
+	}
+#endif
+
 	// general case
+	float	dist[2];
+	int		sides, b, i;
 	dist[0] = dist[1] = 0;
 	if (p->signbits < 8) // >= 8: default case is original code (dist[0]=dist[1]=0)
 	{
@@ -709,6 +748,22 @@ void ClearBounds( vec3_t mins, vec3_t maxs ) {
 }
 
 void AddPointToBounds( const vec3_t v, vec3_t mins, vec3_t maxs ) {
+#if Q_HAS_SIMD
+	__m128 pt = _mm_loadu_ps(v);
+	__m128 mn = _mm_loadu_ps(mins);
+	__m128 mx = _mm_loadu_ps(maxs);
+	
+	__m128 new_mn = _mm_min_ps(pt, mn);
+	__m128 new_mx = _mm_max_ps(pt, mx);
+	
+	_mm_store_ss(&mins[0], new_mn);
+	_mm_store_ss(&mins[1], _mm_shuffle_ps(new_mn, new_mn, _MM_SHUFFLE(1, 1, 1, 1)));
+	_mm_store_ss(&mins[2], _mm_shuffle_ps(new_mn, new_mn, _MM_SHUFFLE(2, 2, 2, 2)));
+	
+	_mm_store_ss(&maxs[0], new_mx);
+	_mm_store_ss(&maxs[1], _mm_shuffle_ps(new_mx, new_mx, _MM_SHUFFLE(1, 1, 1, 1)));
+	_mm_store_ss(&maxs[2], _mm_shuffle_ps(new_mx, new_mx, _MM_SHUFFLE(2, 2, 2, 2)));
+#else
 	if ( v[0] < mins[0] ) {
 		mins[0] = v[0];
 	}
@@ -729,6 +784,7 @@ void AddPointToBounds( const vec3_t v, vec3_t mins, vec3_t maxs ) {
 	if ( v[2] > maxs[2] ) {
 		maxs[2] = v[2];
 	}
+#endif
 }
 
 qboolean BoundsIntersect(const vec3_t mins, const vec3_t maxs,
@@ -780,6 +836,25 @@ qboolean BoundsIntersectPoint(const vec3_t mins, const vec3_t maxs,
 }
 
 vec_t VectorNormalize( vec3_t v ) {
+#if Q_HAS_SIMD
+	__m128 x = _mm_loadu_ps(v);
+	__m128 mul = _mm_mul_ps(x, x);
+	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
+	float length;
+	_mm_store_ss(&length, sum);
+	if (length > 0.0f) {
+		__m128 sqrt_len = _mm_sqrt_ss(sum);
+		_mm_store_ss(&length, sqrt_len);
+		__m128 len_v = _mm_shuffle_ps(sqrt_len, sqrt_len, _MM_SHUFFLE(0, 0, 0, 0));
+		__m128 norm = _mm_div_ps(x, len_v);
+		_mm_store_ss(&v[0], norm);
+		_mm_store_ss(&v[1], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(1, 1, 1, 1)));
+		_mm_store_ss(&v[2], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(2, 2, 2, 2)));
+	}
+	return length;
+#else
 	float length, ilength;
 
 	length = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
@@ -795,6 +870,7 @@ vec_t VectorNormalize( vec3_t v ) {
 	}
 
 	return length;
+#endif
 }
 
 vec_t VectorNormalize2( const vec3_t v, vec3_t out ) {

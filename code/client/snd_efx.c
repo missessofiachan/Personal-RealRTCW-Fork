@@ -1,3 +1,5 @@
+#include "snd_local.h"
+#include "client.h"
 #include "qal.h"
 #include "snd_efx.h"
 
@@ -122,7 +124,7 @@ void S_EFX_SetPreset(int presetNum) {
 
 	if (presetNum >= 0 && presetNum <= 7) {
 		const char* presetNames[] = { "NONE", "BUNKER", "ROOM", "LARGE HALL", "CRYPT", "TUNNEL", "SEWER", "DEPOT" };
-		Com_Printf( "^5EFX Reverb Activated: ^7%s\n", presetNames[presetNum] );
+		Com_DPrintf( "EFX Reverb Activated: %s\n", presetNames[presetNum] );
 	}
 
 	switch ( presetNum ) {
@@ -430,4 +432,108 @@ void S_EFX_UpdateGain(float gain) {
 	if ( qalAuxiliaryEffectSlotf ) {
 		qalAuxiliaryEffectSlotf( reverbSlot, AL_EFFECTSLOT_GAIN, gain );
 	}
+}
+
+/*
+==========================
+S_EFX_UpdateDynamicReverb
+==========================
+*/
+extern cvar_t *s_alDynamicReverb;
+extern vec3_t lastListenerOrigin;
+
+void S_EFX_UpdateDynamicReverb(void) {
+	static int lastReverbTraceTime = 0;
+	int now = Sys_Milliseconds();
+	
+	if (!efx_supported) {
+		return;
+	}
+
+	if (clc.state < CA_ACTIVE) {
+		return;
+	}
+
+	if (!s_alDynamicReverb || !s_alDynamicReverb->integer) {
+		return;
+	}
+
+	// Only trace every 100ms to avoid any performance impact
+	if (now - lastReverbTraceTime < 100 && lastReverbTraceTime != 0) {
+		return;
+	}
+	lastReverbTraceTime = now;
+
+	// Perform 6 traces in the cardinal directions: +X, -X, +Y, -Y, +Z, -Z
+	vec3_t directions[6] = {
+		{ 1.0f, 0.0f, 0.0f },
+		{ -1.0f, 0.0f, 0.0f },
+		{ 0.0f, 1.0f, 0.0f },
+		{ 0.0f, -1.0f, 0.0f },
+		{ 0.0f, 0.0f, 1.0f },
+		{ 0.0f, 0.0f, -1.0f }
+	};
+
+	float totalDistance = 0.0f;
+	int i;
+	float maxTraceLen = 1500.0f;
+
+	for (i = 0; i < 6; i++) {
+		trace_t tr;
+		vec3_t end;
+		VectorMA(lastListenerOrigin, maxTraceLen, directions[i], end);
+		CM_BoxTrace(&tr, lastListenerOrigin, end, NULL, NULL, 0, MASK_SOLID, qfalse);
+		totalDistance += tr.fraction * maxTraceLen;
+	}
+
+	float avgDistance = totalDistance / 6.0f;
+
+	// Map average distance (0 to 1500) to reverb parameters
+	// Decay time: small tight room (0.4s) to large hall/cavern (3.0s)
+	float decay = 0.4f + (avgDistance / maxTraceLen) * 2.6f;
+	if (decay < 0.4f) decay = 0.4f;
+	if (decay > 3.0f) decay = 3.0f;
+
+	// Reflections delay (pre-delay): 0.005s to 0.040s
+	float refDelay = 0.005f + (avgDistance / maxTraceLen) * 0.035f;
+	if (refDelay < 0.005f) refDelay = 0.005f;
+	if (refDelay > 0.040f) refDelay = 0.040f;
+
+	// Reverb gain: larger rooms have more prominent late reflections, but slightly lower direct reverb
+	float gain = 0.10f + (avgDistance / maxTraceLen) * 0.35f;
+	if (gain < 0.10f) gain = 0.10f;
+	if (gain > 0.45f) gain = 0.45f;
+
+	// Air absorption: larger rooms absorb more HF
+	float airAbs = 0.99f - (avgDistance / maxTraceLen) * 0.05f;
+	if (airAbs < 0.94f) airAbs = 0.94f;
+	if (airAbs > 0.99f) airAbs = 0.99f;
+
+	// Set target parameters dynamically
+	targetParams.gain = gain;
+	targetParams.decayTime = decay;
+	targetParams.decayHFRatio = 0.4f; // balanced absorption
+	targetParams.roomRolloff = 0.10f;
+	targetParams.reflectionsGain = gain * 1.2f;
+	targetParams.reflectionsDelay = refDelay;
+	targetParams.lateReverbGain = gain * 1.5f;
+	targetParams.lateReverbDelay = refDelay * 1.5f;
+	targetParams.diffusion = 0.85f;
+	targetParams.density = 0.8f;
+	targetParams.airAbsorptionGainHF = airAbs;
+
+	// EAX specific parameters
+	if (eaxReverbSupported) {
+		targetParams.gainLF = gain * 0.8f;
+		targetParams.decayLFRatio = 0.8f;
+		targetParams.echoTime = refDelay * 5.0f;
+		targetParams.echoDepth = 0.1f;
+		targetParams.modulationTime = 0.25f;
+		targetParams.modulationDepth = 0.1f;
+		targetParams.hfReference = 5000.0f;
+		targetParams.lfReference = 250.0f;
+	}
+
+	// Force the currentPreset to -2 so static presets know they were overridden
+	currentPreset = -2;
 }

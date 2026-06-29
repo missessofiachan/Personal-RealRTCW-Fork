@@ -53,6 +53,8 @@ cvar_t *s_alHRTF;
 cvar_t *s_alHRTFProfile;
 cvar_t *s_alHRTFProfileName;
 cvar_t *s_alAvailableHRTFs;
+cvar_t *s_alDynamicReverb;
+cvar_t *s_alOcclusion;
 
 static qboolean enumeration_ext = qfalse;
 static qboolean enumeration_all_ext = qfalse;
@@ -1029,7 +1031,7 @@ static int srcCount = 0;
 static int srcActiveCnt = 0;
 static qboolean alSourcesInitialised = qfalse;
 static int lastListenerNumber = -1;
-static vec3_t lastListenerOrigin = { 0.0f, 0.0f, 0.0f };
+vec3_t lastListenerOrigin = { 0.0f, 0.0f, 0.0f };
 
 typedef struct sentity_s
 {
@@ -2225,7 +2227,7 @@ void S_AL_SrcUpdate( void )
     }
 
     // Per-Source Obstruction & Occlusion (Audio)
-    if (!state && !curSource->local && !curSource->isStream && curSource->isPlaying)
+    if (clc.state >= CA_ACTIVE && s_alOcclusion && s_alOcclusion->integer && !state && !curSource->local && !curSource->isStream && curSource->isPlaying)
     {
       vec3_t sourcePos;
       if (curSource->isTracking) {
@@ -2238,11 +2240,31 @@ void S_AL_SrcUpdate( void )
       {
         trace_t tr;
         CM_BoxTrace(&tr, lastListenerOrigin, sourcePos, NULL, NULL, 0, MASK_SOLID, qfalse);
-        if (tr.fraction < 1.0f)
+        if (tr.fraction < 1.0f && !tr.startsolid)
         {
+          int listenerLeaf = CM_PointLeafnum(lastListenerOrigin);
+          int listenerArea = CM_LeafArea(listenerLeaf);
+          int sourceLeaf = CM_PointLeafnum(sourcePos);
+          int sourceArea = CM_LeafArea(sourceLeaf);
+          
+          float gainHF = 0.25f;
+          
+          if (listenerArea != sourceArea) {
+            int pathLen = CM_GetAreaPathLength(sourceArea, listenerArea);
+            if (pathLen < 0) {
+              gainHF = 0.05f; // Blocked by closed doors
+            } else {
+              gainHF = 0.8f * powf(0.7f, (float)pathLen);
+              if (gainHF < 0.1f) gainHF = 0.1f;
+            }
+          } else {
+            // Same room, direct obstruction
+            gainHF = 0.4f;
+          }
+
           qalFilteri(curSource->directFilter, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
           qalFilterf(curSource->directFilter, AL_LOWPASS_GAIN, 0.8f);
-          qalFilterf(curSource->directFilter, AL_LOWPASS_GAINHF, 0.25f);
+          qalFilterf(curSource->directFilter, AL_LOWPASS_GAINHF, gainHF);
           qalSourcei(curSource->alSource, AL_DIRECT_FILTER, curSource->directFilter);
         }
         else
@@ -2250,6 +2272,10 @@ void S_AL_SrcUpdate( void )
           qalSourcei(curSource->alSource, AL_DIRECT_FILTER, AL_FILTER_NULL);
         }
       }
+    }
+    else if (qalGenFilters && curSource->directFilter)
+    {
+      qalSourcei(curSource->alSource, AL_DIRECT_FILTER, AL_FILTER_NULL);
     }
 
     if ( ( entityNum < MAX_CLIENTS) && (entityChannel == CHAN_VOICE ))
@@ -3069,6 +3095,10 @@ void S_AL_Update( void )
   }
 
   // Update EFX parameters (reverb crossfading tick)
+  if (s_alReverb->integer)
+  {
+    S_EFX_UpdateDynamicReverb();
+  }
   S_EFX_Update();
 
   // Reverb gain multiplier
@@ -3479,6 +3509,8 @@ qboolean S_AL_Init( soundInterface_t *si )
   s_alHRTFProfile = Cvar_Get("s_alHRTFProfile", "0", CVAR_ARCHIVE);
   s_alHRTFProfileName = Cvar_Get("s_alHRTFProfileName", "None", CVAR_ROM);
   s_alAvailableHRTFs = Cvar_Get("s_alAvailableHRTFs", "", CVAR_ROM | CVAR_NORESTART);
+  s_alDynamicReverb = Cvar_Get("s_alDynamicReverb", "1", CVAR_ARCHIVE);
+  s_alOcclusion = Cvar_Get("s_alOcclusion", "1", CVAR_ARCHIVE);
 
   s_alDriver = Cvar_Get( "s_alDriver", ALDRIVER_DEFAULT, CVAR_LATCH | CVAR_PROTECTED );
 

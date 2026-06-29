@@ -445,6 +445,56 @@ qboolean    CM_AreasConnected( int area1, int area2 ) {
 	return qfalse;
 }
 
+/*
+====================
+CM_GetAreaPathLength
+
+Returns the shortest path length (number of open portals) between area1 and area2.
+Returns -1 if no path exists, or 0 if they are the same area.
+====================
+*/
+int CM_GetAreaPathLength( int area1, int area2 ) {
+	if ( area1 < 0 || area2 < 0 ) {
+		return -1;
+	}
+	if ( area1 >= cm.numAreas || area2 >= cm.numAreas ) {
+		return -1;
+	}
+	if ( area1 == area2 ) {
+		return 0;
+	}
+
+	#define MAX_BFS_AREAS 256
+	int queue[MAX_BFS_AREAS];
+	int dist[MAX_BFS_AREAS];
+	int head = 0, tail = 0;
+	int i;
+
+	for ( i = 0 ; i < cm.numAreas && i < MAX_BFS_AREAS ; i++ ) {
+		dist[i] = -1;
+	}
+
+	queue[tail++] = area1;
+	dist[area1] = 0;
+
+	while ( head < tail ) {
+		int curr = queue[head++];
+		if ( curr == area2 ) {
+			return dist[curr];
+		}
+
+		int *row = cm.areaPortals + curr * cm.numAreas;
+		for ( i = 0 ; i < cm.numAreas && i < MAX_BFS_AREAS ; i++ ) {
+			if ( row[i] > 0 && dist[i] == -1 ) {
+				dist[i] = dist[curr] + 1;
+				queue[tail++] = i;
+			}
+		}
+	}
+
+	return -1;
+}
+
 
 /*
 =================
