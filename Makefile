@@ -1109,7 +1109,7 @@ ifeq ($(ARCH),x86)
   BASE_CFLAGS += -m32
 endif
 ifeq ($(ARCH),x86_64)
-  BASE_CFLAGS += -m64
+  BASE_CFLAGS += -m64 -mavx2 -mfma
 endif
 ifeq ($(ARCH),ppc)
   BASE_CFLAGS += -m32
