@@ -168,6 +168,8 @@ cvar_t  *cl_useKeyLean;
 
 cvar_t	*cl_rate;
 
+cvar_t	*cl_drawCineSubtitles;
+
 clientActive_t cl;
 clientConnection_t clc;
 clientStatic_t cls;
@@ -3326,6 +3328,7 @@ void CL_InitRenderer( void ) {
 
 	// load character sets
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
+	cls.subtitleCharSetShader = re.RegisterShader( "gfx/2d/subchars" );
 	cls.whiteShader = re.RegisterShader( "white" );
 	cls.consoleShader = re.RegisterShader( "console" );
 	cls.consoleShader2 = re.RegisterShader( "console2" );
@@ -3882,6 +3885,7 @@ void CL_Init( void ) {
 	// NERVE - SMF - localization
 	cl_language = Cvar_Get( "cl_language", "0", CVAR_ARCHIVE );
 	cl_debugTranslation = Cvar_Get( "cl_debugTranslation", "0", 0 );
+	cl_drawCineSubtitles = Cvar_Get( "cl_drawCineSubtitles", "0", CVAR_ARCHIVE );
 	// -NERVE - SMF
 
 	//
