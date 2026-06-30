@@ -79,8 +79,8 @@ fi
 USE_DISTROBOX=false
 if [ "$INSIDE_CONTAINER" = false ]; then
     if command -v distrobox &> /dev/null; then
-        # Check if bazzite-dev container exists
-        if distrobox list 2>/dev/null | grep -q "bazzite-dev"; then
+        # Check if Bazzite-dev-nvidia container exists
+        if distrobox list 2>/dev/null | grep -q "Bazzite-dev-nvidia"; then
             USE_DISTROBOX=true
         fi
     fi
@@ -89,19 +89,19 @@ fi
 # Helper function to run commands in the correct context
 run_build_cmd() {
     if [ "$USE_DISTROBOX" = true ]; then
-        distrobox enter bazzite-dev -- "$@"
+        distrobox enter Bazzite-dev-nvidia -- "$@"
     else
         "$@"
     fi
 }
 
 if [ "$USE_DISTROBOX" = true ]; then
-    echo -e "${BLUE}Running build commands inside 'bazzite-dev' distrobox container...${NC}"
+    echo -e "${BLUE}Running build commands inside 'Bazzite-dev-nvidia' distrobox container...${NC}"
 else
     if [ "$INSIDE_CONTAINER" = true ]; then
         echo -e "${BLUE}Running build commands directly inside container...${NC}"
     else
-        echo -e "${YELLOW}Warning: Distrobox 'bazzite-dev' not found. Compiling on host...${NC}"
+        echo -e "${YELLOW}Warning: Distrobox 'Bazzite-dev-nvidia' not found. Compiling on host...${NC}"
     fi
 fi
 
