@@ -29,6 +29,11 @@ If you have questions concerning this license or the applicable additional terms
 #ifndef __Q_SHARED_H
 #define __Q_SHARED_H
 
+#ifndef Q3_VM
+#define Q_HAS_SIMD 1
+#include <immintrin.h> // Includes SSE, SSE4.1 (_mm_dp_ps), and FMA3 all in one shot
+#endif
+
 // q_shared.h -- included first by ALL program modules.
 // A user mod should never modify this file
 
@@ -692,109 +697,159 @@ void ClearBounds( vec3_t mins, vec3_t maxs );
 void AddPointToBounds( const vec3_t v, vec3_t mins, vec3_t maxs );
 
 #if !defined( Q3_VM ) || ( defined( Q3_VM ) && defined( __Q3_VM_MATH ) )
-static ID_INLINE int VectorCompare( const vec3_t v1, const vec3_t v2 ) {
-	if (v1[0] != v2[0] || v1[1] != v2[1] || v1[2] != v2[2]) {
-		return 0;
-	}			
-	return 1;
-}
-
-static ID_INLINE vec_t VectorLength( const vec3_t v ) {
-#if Q_HAS_SIMD
-	__m128 x = _mm_loadu_ps(v);
-	__m128 mul = _mm_mul_ps(x, x);
-	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
-	__m128 sqrt = _mm_sqrt_ss(sum);
-	float len;
-	_mm_store_ss(&len, sqrt);
-	return len;
+static ID_INLINE int VectorCompare(const vec3_t v1, const vec3_t v2)
+{
+#ifndef Q3_VM
+    // Load components safely into registers
+    __m128 a = _mm_set_ps(0.0f, v1[2], v1[1], v1[0]);
+    __m128 b = _mm_set_ps(0.0f, v2[2], v2[1], v2[0]);
+    
+    // Compare vectors component-wise for absolute equality
+    __m128 cmp = _mm_cmpeq_ps(a, b);
+    
+    // Harvest sign bits into an integer mask
+    int mask = _mm_movemask_ps(cmp);
+    
+    // Check if the lower 3 bits (X=1, Y=2, Z=4 -> total 7) are all active match flags
+    return (mask & 7) == 7;
 #else
-	return (vec_t)sqrt (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    // Legacy QVM compiler fallback
+    if (v1[0] != v2[0] || v1[1] != v2[1] || v1[2] != v2[2])
+    {
+        return 0;
+    }
+    return 1;
 #endif
 }
 
-static ID_INLINE vec_t VectorLengthSquared( const vec3_t v ) {
-#if Q_HAS_SIMD
-	__m128 x = _mm_loadu_ps(v);
-	__m128 mul = _mm_mul_ps(x, x);
-	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
-	float len2;
-	_mm_store_ss(&len2, sum);
-	return len2;
+
+static ID_INLINE vec_t VectorLength(const vec3_t v)
+{
+#ifndef Q3_VM
+    // 1. Load the 3 components safely, padding slot 3 with 0.0f
+    __m128 x = _mm_set_ps(0.0f, v[2], v[1], v[0]);
+    
+    // 2. Compute dot product of the vector with itself (X^2 + Y^2 + Z^2)
+    // 0x77 mask: Multiplies slots 0,1,2 and broadcasts the sum to ALL slots of 'sum'
+    __m128 sum = _mm_dp_ps(x, x, 0x77);
+    
+    // 3. Take the square root of the broadcasted sum
+    __m128 sqrt_len = _mm_sqrt_ps(sum);
+    
+    // 4. Safely pull out the scalar float length from slot 0
+    float len;
+    _mm_store_ss(&len, sqrt_len);
+    return len;
 #else
-	return (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    // Legacy QVM fallback
+    return (vec_t)sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 #endif
 }
 
-static ID_INLINE vec_t Distance( const vec3_t p1, const vec3_t p2 ) {
-#if Q_HAS_SIMD
-	__m128 v1 = _mm_loadu_ps(p1);
-	__m128 v2 = _mm_loadu_ps(p2);
-	__m128 diff = _mm_sub_ps(v2, v1);
-	__m128 mul = _mm_mul_ps(diff, diff);
-	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
-	__m128 sqrt = _mm_sqrt_ss(sum);
-	float dist;
-	_mm_store_ss(&dist, sqrt);
-	return dist;
+static ID_INLINE vec_t VectorLengthSquared(const vec3_t v)
+{
+#ifndef Q3_VM
+    // 1. Load the vector components safely
+    __m128 x = _mm_set_ps(0.0f, v[2], v[1], v[0]);
+    
+    // 2. Compute dot product with itself
+    // 0x71 mask: Multiplies slots 0,1,2 and stores the sum inside slot 0 only
+    __m128 sum = _mm_dp_ps(x, x, 0x71);
+    
+    // 3. Extract the scalar float value directly out of slot 0
+    float len2;
+    _mm_store_ss(&len2, sum);
+    return len2;
 #else
-	vec3_t	v;
-
-	VectorSubtract (p2, p1, v);
-	return VectorLength( v );
+    // Legacy QVM fallback
+    return (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 #endif
 }
 
-static ID_INLINE vec_t DistanceSquared( const vec3_t p1, const vec3_t p2 ) {
-#if Q_HAS_SIMD
-	__m128 v1 = _mm_loadu_ps(p1);
-	__m128 v2 = _mm_loadu_ps(p2);
-	__m128 diff = _mm_sub_ps(v2, v1);
-	__m128 mul = _mm_mul_ps(diff, diff);
-	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
-	float dist2;
-	_mm_store_ss(&dist2, sum);
-	return dist2;
+static ID_INLINE vec_t Distance(const vec3_t p1, const vec3_t p2)
+{
+#ifndef Q3_VM
+    // 1. Load both points safely into vector registers
+    __m128 v1 = _mm_set_ps(0.0f, p1[2], p1[1], p1[0]);
+    __m128 v2 = _mm_set_ps(0.0f, p2[2], p2[1], p2[0]);
+    
+    // 2. Subtract the vectors component-wise (v2 - v1)
+    __m128 diff = _mm_sub_ps(v2, v1);
+    
+    // 3. Square and sum the differences using the hardware dot product
+    // 0x77 mask: Multiplies slots 0,1,2 and broadcasts the sum to all slots
+    __m128 sum = _mm_dp_ps(diff, diff, 0x77);
+    
+    // 4. Take the square root of the broadcasted sum and extract the scalar float
+    float dist;
+    _mm_store_ss(&dist, _mm_sqrt_ps(sum));
+    return dist;
 #else
-	vec3_t	v;
+    // Legacy QVM fallback
+    vec3_t v;
+    v[0] = p2[0] - p1[0];
+    v[1] = p2[1] - p1[1];
+    v[2] = p2[2] - p1[2];
+    return (vec_t)sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+#endif
+}
 
-	VectorSubtract (p2, p1, v);
-	return v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+static ID_INLINE vec_t DistanceSquared(const vec3_t p1, const vec3_t p2)
+{
+#ifndef Q3_VM
+    // 1. Load both points safely
+    __m128 v1 = _mm_set_ps(0.0f, p1[2], p1[1], p1[0]);
+    __m128 v2 = _mm_set_ps(0.0f, p2[2], p2[1], p2[0]);
+    
+    // 2. Subtract vectors component-wise
+    __m128 diff = _mm_sub_ps(v2, v1);
+    
+    // 3. Compute dot product of the difference with itself
+    // 0x71 mask: Multiplies slots 0,1,2 and stores the sum inside slot 0 only
+    __m128 sum = _mm_dp_ps(diff, diff, 0x71);
+    
+    // 4. Extract the final scalar float
+    float dist2;
+    _mm_store_ss(&dist2, sum);
+    return dist2;
+#else
+    // Legacy QVM fallback
+    float dx = p2[0] - p1[0];
+    float dy = p2[1] - p1[1];
+    float dz = p2[2] - p1[2];
+    return (dx*dx + dy*dy + dz*dz);
 #endif
 }
 
 // fast vector normalize routine that does not check to make sure
 // that length != 0, nor does it return length, uses rsqrt approximation
-static ID_INLINE void VectorNormalizeFast( vec3_t v )
+static ID_INLINE void VectorNormalizeFast(vec3_t v)
 {
-#if Q_HAS_SIMD
-	__m128 x = _mm_loadu_ps(v);
-	__m128 mul = _mm_mul_ps(x, x);
-	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
-	__m128 rsqrt = _mm_rsqrt_ss(sum);
-	__m128 rsqrt_v = _mm_shuffle_ps(rsqrt, rsqrt, _MM_SHUFFLE(0, 0, 0, 0));
-	__m128 norm = _mm_mul_ps(x, rsqrt_v);
-	_mm_store_ss(&v[0], norm);
-	_mm_store_ss(&v[1], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(1, 1, 1, 1)));
-	_mm_store_ss(&v[2], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(2, 2, 2, 2)));
+#ifndef Q3_VM
+    // 1. Load the vector components safely
+    __m128 x = _mm_set_ps(0.0f, v[2], v[1], v[0]);
+    
+    // 2. Compute the dot product with itself to get the squared length
+    // 0x77 broadcasts the result to all slots so the rsqrt operates on all channels
+    __m128 sum = _mm_dp_ps(x, x, 0x77);
+    
+    // 3. Execute the single-cycle hardware reciprocal square root approximation
+    __m128 rsqrt = _mm_rsqrt_ps(sum);
+    
+    // 4. Multiply the original vector by the reciprocal square root factor
+    __m128 norm = _mm_mul_ps(x, rsqrt);
+    
+    // 5. Stream the results back to the scalar array safely
+    _mm_store_ss(&v[0], norm);
+    _mm_store_ss(&v[1], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(1, 1, 1, 1)));
+    _mm_store_ss(&v[2], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(2, 2, 2, 2)));
 #else
-	float ilength;
-
-	ilength = Q_rsqrt( DotProduct( v, v ) );
-
-	v[0] *= ilength;
-	v[1] *= ilength;
-	v[2] *= ilength;
+    // Legacy QVM fallback
+    float ilength;
+    ilength = Q_rsqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    v[0] *= ilength;
+    v[1] *= ilength;
+    v[2] *= ilength;
 #endif
 }
 
@@ -804,22 +859,32 @@ static ID_INLINE void VectorInverse( vec3_t v ){
 	v[2] = -v[2];
 }
 
-static ID_INLINE void CrossProduct( const vec3_t v1, const vec3_t v2, vec3_t cross ) {
-#if Q_HAS_SIMD
-	__m128 a = _mm_loadu_ps(v1);
-	__m128 b = _mm_loadu_ps(v2);
-	__m128 a_yzx = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 0, 2, 1));
-	__m128 b_zxy = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 1, 0, 2));
-	__m128 a_zxy = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 1, 0, 2));
-	__m128 b_yzx = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 0, 2, 1));
-	__m128 r = _mm_sub_ps(_mm_mul_ps(a_yzx, b_zxy), _mm_mul_ps(a_zxy, b_yzx));
-	_mm_store_ss(&cross[0], r);
-	_mm_store_ss(&cross[1], _mm_shuffle_ps(r, r, _MM_SHUFFLE(1, 1, 1, 1)));
-	_mm_store_ss(&cross[2], _mm_shuffle_ps(r, r, _MM_SHUFFLE(2, 2, 2, 2)));
+static ID_INLINE void CrossProduct(const vec3_t v1, const vec3_t v2, vec3_t cross)
+{
+#ifndef Q3_VM
+    // 1. Load both vectors safely into registers
+    __m128 a = _mm_set_ps(0.0f, v1[2], v1[1], v1[0]);
+    __m128 b = _mm_set_ps(0.0f, v2[2], v2[1], v2[0]);
+    
+    // 2. Perform the cross-product shuffling sequence
+    // Shuffles components to match the matrix determinant cross pattern
+    __m128 a_yzx = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 0, 2, 1));
+    __m128 b_zxy = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 1, 0, 2));
+    __m128 a_zxy = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 1, 0, 2));
+    __m128 b_yzx = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 0, 2, 1));
+    
+    // 3. Compute (a_yzx * b_zxy) - (a_zxy * b_yzx) simultaneously
+    __m128 r = _mm_sub_ps(_mm_mul_ps(a_yzx, b_zxy), _mm_mul_ps(a_zxy, b_yzx));
+    
+    // 4. Stream the results back to memory safely
+    _mm_store_ss(&cross[0], r);
+    _mm_store_ss(&cross[1], _mm_shuffle_ps(r, r, _MM_SHUFFLE(1, 1, 1, 1)));
+    _mm_store_ss(&cross[2], _mm_shuffle_ps(r, r, _MM_SHUFFLE(2, 2, 2, 2)));
 #else
-	cross[0] = v1[1]*v2[2] - v1[2]*v2[1];
-	cross[1] = v1[2]*v2[0] - v1[0]*v2[2];
-	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
+    // Legacy QVM fallback
+    cross[0] = v1[1] * v2[2] - v1[2] * v2[1];
+    cross[1] = v1[2] * v2[0] - v1[0] * v2[2];
+    cross[2] = v1[0] * v2[1] - v1[1] * v2[0];
 #endif
 }
 
