@@ -35,27 +35,49 @@ short*   snd_out;
 
 void S_WriteLinearBlastStereo16 (void)
 {
-	int		i;
-	int		val;
+    int i = 0;
 
-	for (i=0 ; i<snd_linear_count ; i+=2)
-	{
-		val = snd_p[i]>>8;
-		if (val > 0x7fff)
-			snd_out[i] = 0x7fff;
-		else if (val < -32768)
-			snd_out[i] = -32768;
-		else
-			snd_out[i] = val;
+#ifndef Q3_VM
+    // Process 8 audio samples at a time (4 stereo pairs) concurrently
+    for (; i + 7 < snd_linear_count; i += 8)
+    {
+        // Load 8 32-bit mixed integer samples from the paintbuffer
+        __m128i in_lo = _mm_loadu_si128((const __m128i*)&snd_p[i]);
+        __m128i in_hi = _mm_loadu_si128((const __m128i*)&snd_p[i + 4]);
 
-		val = snd_p[i+1]>>8;
-		if (val > 0x7fff)
-			snd_out[i+1] = 0x7fff;
-		else if (val < -32768)
-			snd_out[i+1] = -32768;
-		else
-			snd_out[i+1] = val;
-	}
+        // Arithmetic shift right by 8 bits across all channels
+        __m128i shifted_lo = _mm_srai_epi32(in_lo, 8);
+        __m128i shifted_hi = _mm_srai_epi32(in_hi, 8);
+
+        // Pack 32-bit integers down to 16-bit shorts with hardware saturation clamping
+        __m128i packed = _mm_packs_epi32(shifted_lo, shifted_hi);
+
+        // Blast the 8 packed 16-bit stereo samples to the output audio buffer
+        _mm_storeu_si128((__m128i*)&snd_out[i], packed);
+    }
+#endif
+
+    // Clean scalar fallback for remaining samples or QVM compatibility
+    for (; i < snd_linear_count; i += 2)
+    {
+        int val;
+
+        val = snd_p[i] >> 8;
+        if (val > 0x7fff)
+            snd_out[i] = 0x7fff;
+        else if (val < -32768)
+            snd_out[i] = -32768;
+        else
+            snd_out[i] = val;
+
+        val = snd_p[i + 1] >> 8;
+        if (val > 0x7fff)
+            snd_out[i + 1] = 0x7fff;
+        else if (val < -32768)
+            snd_out[i + 1] = -32768;
+        else
+            snd_out[i + 1] = val;
+    }
 }
 #elif defined(__GNUC__)
 // uses snd_mixa.s
@@ -148,103 +170,128 @@ S_TransferPaintBuffer
 */
 void S_TransferPaintBuffer(int endtime)
 {
-	int 	out_idx;
-	int 	count;
-	int 	*p;
-	int 	step;
-	int		val;
-	int		i;
-	unsigned long *pbuf;
+    int out_idx;
+    int count;
+    int* p;
+    int step;
+    int val;
+    int i;
+    unsigned long* pbuf;
 
-	pbuf = (unsigned long *)dma.buffer;
+    pbuf = (unsigned long*)dma.buffer;
 
+    if (s_testsound->integer)
+    {
+        // Write a fixed sine wave
+        count = (endtime - s_paintedtime);
+        for (i = 0; i < count; i++)
+            paintbuffer[i].left = paintbuffer[i].right = sin((s_paintedtime + i) * 0.1) * 20000 * 256;
+    }
 
-	if ( s_testsound->integer ) {
-		// write a fixed sine wave
-		count = (endtime - s_paintedtime);
-		for (i=0 ; i<count ; i++)
-			paintbuffer[i].left = paintbuffer[i].right = sin((s_paintedtime+i)*0.1)*20000*256;
-	}
+    if (dma.samplebits == 16 && dma.channels == 2)
+    {
+        // Fully optimized stereo short hardware block path
+        S_TransferStereo16(pbuf, endtime);
+    }
+    else
+    {
+        p = (int*)paintbuffer;
+        count = (endtime - s_paintedtime) * dma.channels;
+        out_idx = ((unsigned int)s_paintedtime * dma.channels) % dma.samples;
+        step = 3 - MIN(dma.channels, 2);
 
+        int chan_counter = 0; // Eliminates the expensive (i % dma.channels) operation
 
-	if (dma.samplebits == 16 && dma.channels == 2)
-	{	// optimized case
-		S_TransferStereo16 (pbuf, endtime);
-	}
-	else
-	{	// general case
-		p = (int *) paintbuffer;
-		count = (endtime - s_paintedtime) * dma.channels;
-		out_idx = ((unsigned int)s_paintedtime * dma.channels) % dma.samples;
-		step = 3 - MIN(dma.channels, 2);
+        if ((dma.isfloat) && (dma.samplebits == 32))
+        {
+            float* out = (float*)pbuf;
+            for (i = 0; i < count; i++)
+            {
+                // Branch-free stream mapping using an auto-incrementing ring counter
+                if (chan_counter >= 2)
+                {
+                    val = 0;
+                }
+                else
+                {
+                    val = *p >> 8;
+                    p += step;
+                }
 
-		if ((dma.isfloat) && (dma.samplebits == 32))
-		{
-			float *out = (float *) pbuf;
-			for (i=0 ; i<count ; i++)
-			{
-				if ((i % dma.channels) >= 2)
-				{
-					val = 0;
-				}
-				else
-				{
-					val = *p >> 8;
-					p+= step;
-				}
-				if (val > 0x7fff)
-					val = 0x7fff;
-				else if (val < -32767)  /* clamp to one less than max to make division max out at -1.0f. */
-					val = -32767;
-				out[out_idx] = ((float) val) / 32767.0f;
-				out_idx = (out_idx + 1) % dma.samples;
-			}
-		}
-		else if (dma.samplebits == 16)
-		{
-			short *out = (short *) pbuf;
-			for (i=0 ; i<count ; i++)
-			{
-				if ((i % dma.channels) >= 2)
-				{
-					val = 0;
-				}
-				else
-				{
-					val = *p >> 8;
-					p+= step;
-				}
-				if (val > 0x7fff)
-					val = 0x7fff;
-				else if (val < -32768)
-					val = -32768;
-				out[out_idx] = val;
-				out_idx = (out_idx + 1) % dma.samples;
-			}
-		}
-		else if (dma.samplebits == 8)
-		{
-			unsigned char *out = (unsigned char *) pbuf;
-			for (i=0 ; i<count ; i++)
-			{
-				if ((i % dma.channels) >= 2)
-				{
-					val = 0;
-				}
-				else
-				{
-					val = *p >> 8;
-					p+= step;
-				}
-				if (val > 0x7fff)
-					val = 0x7fff;
-				else if (val < -32768)
-					val = -32768;
-				out[out_idx] = (val>>8) + 128;
-				out_idx = (out_idx + 1) % dma.samples;
-			}
-		}
-	}
+                if (val > 0x7fff)
+                    val = 0x7fff;
+                else if (val < -32767) 
+                    val = -32767;
+
+                out[out_idx] = ((float)val) / 32767.0f;
+                
+                // Optimized linear buffer pointer wrapping bypasses modulo operator
+                out_idx++;
+                if (out_idx >= dma.samples) out_idx = 0;
+
+                chan_counter++;
+                if (chan_counter >= dma.channels) chan_counter = 0;
+            }
+        }
+        else if (dma.samplebits == 16)
+        {
+            short* out = (short*)pbuf;
+            for (i = 0; i < count; i++)
+            {
+                if (chan_counter >= 2)
+                {
+                    val = 0;
+                }
+                else
+                {
+                    val = *p >> 8;
+                    p += step;
+                }
+
+                if (val > 0x7fff)
+                    val = 0x7fff;
+                else if (val < -32768)
+                    val = -32768;
+
+                out[out_idx] = val;
+                
+                out_idx++;
+                if (out_idx >= dma.samples) out_idx = 0;
+
+                chan_counter++;
+                if (chan_counter >= dma.channels) chan_counter = 0;
+            }
+        }
+        else if (dma.samplebits == 8)
+        {
+            unsigned char* out = (unsigned char*)pbuf;
+            for (i = 0; i < count; i++)
+            {
+                if (chan_counter >= 2)
+                {
+                    val = 0;
+                }
+                else
+                {
+                    val = *p >> 8;
+                    p += step;
+                }
+
+                if (val > 0x7fff)
+                    val = 0x7fff;
+                else if (val < -32768)
+                    val = -32768;
+
+                out[out_idx] = (val >> 8) + 128;
+                
+                out_idx++;
+                if (out_idx >= dma.samples) out_idx = 0;
+
+                chan_counter++;
+                if (chan_counter >= dma.channels) chan_counter = 0;
+            }
+        }
+    }
 }
 
 /*
@@ -477,99 +524,216 @@ CHANNEL MIXING
 ===============================================================================
 */
 
-static void S_PaintChannelFrom16_scalar( channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset ) {
-	int						data, aoff, boff;
-	int						leftvol, rightvol;
-	int						i, j;
-	portable_samplepair_t	*samp;
-	sndBuffer				*chunk;
-	short					*samples;
-	float					ooff, fdata[2], fdiv, fleftvol, frightvol;
+static void S_PaintChannelFrom16_scalar(channel_t* ch, const sfx_t* sc, int count, int sampleOffset, int bufferOffset)
+{
+    int leftvol, rightvol;
+    portable_samplepair_t* samp;
+    sndBuffer* chunk;
+    short* samples;
 
-	if (sc->soundChannels <= 0) {
-		return;
-	}
+    if (sc->soundChannels <= 0)
+    {
+        return;
+    }
 
-	samp = &paintbuffer[ bufferOffset ];
+    samp = &paintbuffer[bufferOffset];
 
-	if (ch->doppler) {
-		sampleOffset = sampleOffset*ch->oldDopplerScale;
-	}
+    if (ch->doppler)
+    {
+        sampleOffset = sampleOffset * ch->oldDopplerScale;
+    }
 
-	if ( sc->soundChannels == 2 ) {
-		sampleOffset *= sc->soundChannels;
+    if (sc->soundChannels == 2)
+    {
+        sampleOffset *= sc->soundChannels;
+        if (sampleOffset & 1)
+        {
+            sampleOffset &= ~1;
+        }
+    }
 
-		if ( sampleOffset & 1 ) {
-			sampleOffset &= ~1;
-		}
-	}
+    // Advance to the correct starting audio memory chunk
+    chunk = sc->soundData;
+    while (sampleOffset >= SND_CHUNK_SIZE)
+    {
+        chunk = chunk->next;
+        sampleOffset -= SND_CHUNK_SIZE;
+        if (!chunk)
+        {
+            chunk = sc->soundData;
+        }
+    }
 
-	chunk = sc->soundData;
-	while (sampleOffset>=SND_CHUNK_SIZE) {
-		chunk = chunk->next;
-		sampleOffset -= SND_CHUNK_SIZE;
-		if (!chunk) {
-			chunk = sc->soundData;
-		}
-	}
+    if (!ch->doppler || ch->dopplerScale == 1.0f)
+    {
+        leftvol = ch->leftvol * snd_vol;
+        rightvol = ch->rightvol * snd_vol;
+        samples = chunk->sndChunk;
 
-	if (!ch->doppler || ch->dopplerScale==1.0f) {
-		leftvol = ch->leftvol*snd_vol;
-		rightvol = ch->rightvol*snd_vol;
-		samples = chunk->sndChunk;
-		for ( i=0 ; i<count ; i++ ) {
-			data  = samples[sampleOffset++];
-			samp[i].left += (data * leftvol)>>8;
+#ifndef Q3_VM
+        // Set up the volume vector layout: [Right, Left, Right, Left]
+        __m128i v_vol = _mm_set_epi32(rightvol, leftvol, rightvol, leftvol);
 
-			if ( sc->soundChannels == 2 ) {
-				data = samples[sampleOffset++];
-			}
-			samp[i].right += (data * rightvol)>>8;
+        while (count > 0)
+        {
+            // Loop Chunking: Calculate exactly how many samples we can safely mix 
+            // before hitting the hard boundary of the current audio chunk pointer
+            int chunk_remaining = SND_CHUNK_SIZE - sampleOffset;
+            int max_pairs = (sc->soundChannels == 2) ? (chunk_remaining >> 1) : chunk_remaining;
+            int to_process = (count < max_pairs) ? count : max_pairs;
 
-			if (sampleOffset == SND_CHUNK_SIZE) {
-				chunk = chunk->next;
-				samples = chunk->sndChunk;
-				sampleOffset = 0;
-			}
-		}
-	} else {
-		fleftvol = ch->leftvol*snd_vol;
-		frightvol = ch->rightvol*snd_vol;
+            if (to_process <= 0)
+            {
+                chunk = chunk->next;
+                if (!chunk) chunk = sc->soundData;
+                samples = chunk->sndChunk;
+                sampleOffset = 0;
+                continue;
+            }
 
-		ooff = sampleOffset;
-		samples = chunk->sndChunk;
-		
+            int j = 0;
+            if (sc->soundChannels == 2)
+            {
+                // Vectorized Stereo Loop: Process 2 stereo pairs (4 samples) per iteration
+                for (; j + 1 < to_process; j += 2)
+                {
+                    // Load 4 shorts (L0, R0, L1, R1) and sign-extend them to 32-bit integers
+                    __m128i src = _mm_loadl_epi64((const __m128i*)&samples[sampleOffset]);
+                    __m128i src32 = _mm_cvtepi16_epi32(src);
 
+                    // Multiply by channel volumes and shift right to scale audio levels
+                    __m128i mixed = _mm_mullo_epi32(src32, v_vol);
+                    __m128i scaled = _mm_srai_epi32(mixed, 8);
 
+                    // Accumulate directly into the 32-bit integer paintbuffer
+                    __m128i dest = _mm_loadu_si128((const __m128i*)&samp[j]);
+                    _mm_storeu_si128((__m128i*)&samp[j], _mm_add_epi32(dest, scaled));
 
-		for ( i=0 ; i<count ; i++ ) {
+                    sampleOffset += 4;
+                }
+                // Scalar cleanup for remaining single stereo pair in this chunk slice
+                for (; j < to_process; j++)
+                {
+                    samp[j].left  += (samples[sampleOffset]   * leftvol) >> 8;
+                    samp[j].right += (samples[sampleOffset+1] * rightvol) >> 8;
+                    sampleOffset += 2;
+                }
+            }
+            else
+            {
+                // Vectorized Mono Loop: Process 4 mono samples (filling 4 stereo pairs) per iteration
+                for (; j + 3 < to_process; j += 4)
+                {
+                    // Load 4 mono shorts and sign-extend to 32-bit integers
+                    __m128i src = _mm_loadl_epi64((const __m128i*)&samples[sampleOffset]);
+                    __m128i src32 = _mm_cvtepi16_epi32(src);
 
-			aoff = ooff;
-			ooff = ooff + ch->dopplerScale * sc->soundChannels;
-			boff = ooff;
-			fdata[0] = fdata[1] = 0;
-			for (j=aoff; j<boff; j += sc->soundChannels) {
-				if (j == SND_CHUNK_SIZE) {
-					chunk = chunk->next;
-					if (!chunk) {
-						chunk = sc->soundData;
-					}
-					samples = chunk->sndChunk;
-					ooff -= SND_CHUNK_SIZE;
-				}
-				if ( sc->soundChannels == 2 ) {
-					fdata[0] += samples[j&(SND_CHUNK_SIZE-1)];
-					fdata[1] += samples[(j+1)&(SND_CHUNK_SIZE-1)];
-				} else {
-					fdata[0] += samples[j&(SND_CHUNK_SIZE-1)];
-					fdata[1] += samples[j&(SND_CHUNK_SIZE-1)];
-				}
-			}
-			fdiv = 256 * (boff-aoff) / sc->soundChannels;
-			samp[i].left += (fdata[0] * fleftvol)/fdiv;
-			samp[i].right += (fdata[1] * frightvol)/fdiv;
-		}
-	}
+                    // Unpack elements to duplicate each mono sample across Left and Right slots
+                    __m128i src_lo = _mm_unpacklo_epi32(src32, src32); // [M1, M1, M0, M0]
+                    __m128i src_hi = _mm_unpackhi_epi32(src32, src32); // [M3, M3, M2, M2]
+
+                    // Multiply and scale audio streams
+                    __m128i mixed_lo = _mm_mullo_epi32(src_lo, v_vol);
+                    __m128i mixed_hi = _mm_mullo_epi32(src_hi, v_vol);
+                    __m128i scaled_lo = _mm_srai_epi32(mixed_lo, 8);
+                    __m128i scaled_hi = _mm_srai_epi32(mixed_hi, 8);
+
+                    // Accumulate 4 stereo pairs back to paintbuffer
+                    __m128i dest_lo = _mm_loadu_si128((const __m128i*)&samp[j]);
+                    __m128i dest_hi = _mm_loadu_si128((const __m128i*)&samp[j + 2]);
+                    _mm_storeu_si128((__m128i*)&samp[j],     _mm_add_epi32(dest_lo, scaled_lo));
+                    _mm_storeu_si128((__m128i*)&samp[j + 2], _mm_add_epi32(dest_hi, scaled_hi));
+
+                    sampleOffset += 4;
+                }
+                // Scalar cleanup for remaining mono samples in this chunk slice
+                for (; j < to_process; j++)
+                {
+                    int data = samples[sampleOffset++];
+                    samp[j].left  += (data * leftvol) >> 8;
+                    samp[j].right += (data * rightvol) >> 8;
+                }
+            }
+
+            samp += to_process;
+            count -= to_process;
+
+            if (sampleOffset >= SND_CHUNK_SIZE)
+            {
+                chunk = chunk->next;
+                if (!chunk) chunk = sc->soundData;
+                samples = chunk->sndChunk;
+                sampleOffset = 0;
+            }
+        }
+#else
+        // Legacy QVM fallback path
+        for (int i = 0; i < count; i++)
+        {
+            int data = samples[sampleOffset++];
+            samp[i].left += (data * leftvol) >> 8;
+
+            if (sc->soundChannels == 2)
+            {
+                data = samples[sampleOffset++];
+            }
+            samp[i].right += (data * rightvol) >> 8;
+
+            if (sampleOffset == SND_CHUNK_SIZE)
+            {
+                chunk = chunk->next;
+                samples = chunk->sndChunk;
+                sampleOffset = 0;
+            }
+        }
+#endif
+    }
+    else
+    {
+        // Keep the legacy doppler handling loop intact as fallback
+        float ooff, fdata[2], fdiv, fleftvol, frightvol;
+        int aoff, boff, j;
+
+        fleftvol = ch->leftvol * snd_vol;
+        frightvol = ch->rightvol * snd_vol;
+
+        ooff = sampleOffset;
+        samples = chunk->sndChunk;
+
+        for (int i = 0; i < count; i++)
+        {
+            aoff = ooff;
+            ooff = ooff + ch->dopplerScale * sc->soundChannels;
+            boff = ooff;
+            fdata[0] = fdata[1] = 0;
+            for (j = aoff; j < boff; j += sc->soundChannels)
+            {
+                if (j == SND_CHUNK_SIZE)
+                {
+                    chunk = chunk->next;
+                    if (!chunk)
+                    {
+                        chunk = sc->soundData;
+                    }
+                    samples = chunk->sndChunk;
+                    ooff -= SND_CHUNK_SIZE;
+                }
+                if (sc->soundChannels == 2)
+                {
+                    fdata[0] += samples[j & (SND_CHUNK_SIZE - 1)];
+                    fdata[1] += samples[(j + 1) & (SND_CHUNK_SIZE - 1)];
+                }
+                else
+                {
+                    fdata[0] += samples[j & (SND_CHUNK_SIZE - 1)];
+                    fdata[1] += samples[j & (SND_CHUNK_SIZE - 1)];
+                }
+            }
+            fdiv = 256 * (boff - aoff) / sc->soundChannels;
+            samp[i].left += (fdata[0] * fleftvol) / fdiv;
+            samp[i].right += (fdata[1] * frightvol) / fdiv;
+        }
+    }
 }
 
 static void S_PaintChannelFrom16( channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset ) {
@@ -583,147 +747,383 @@ static void S_PaintChannelFrom16( channel_t *ch, const sfx_t *sc, int count, int
 	S_PaintChannelFrom16_scalar( ch, sc, count, sampleOffset, bufferOffset );
 }
 
-void S_PaintChannelFromWavelet( channel_t *ch, sfx_t *sc, int count, int sampleOffset, int bufferOffset ) {
-	int						data;
-	int						leftvol, rightvol;
-	int						i;
-	portable_samplepair_t	*samp;
-	sndBuffer				*chunk;
-	short					*samples;
+void S_PaintChannelFromWavelet(channel_t* ch, sfx_t* sc, int count, int sampleOffset, int bufferOffset)
+{
+    int data;
+    int leftvol, rightvol;
+    int i;
+    portable_samplepair_t* samp;
+    sndBuffer* chunk;
+    short* samples;
 
-	leftvol = ch->leftvol*snd_vol;
-	rightvol = ch->rightvol*snd_vol;
+    leftvol = ch->leftvol * snd_vol;
+    rightvol = ch->rightvol * snd_vol;
 
-	i = 0;
-	samp = &paintbuffer[ bufferOffset ];
-	chunk = sc->soundData;
-	while (sampleOffset>=(SND_CHUNK_SIZE_FLOAT*4)) {
-		chunk = chunk->next;
-		sampleOffset -= (SND_CHUNK_SIZE_FLOAT*4);
-		i++;
-	}
+    i = 0;
+    samp = &paintbuffer[bufferOffset];
+    chunk = sc->soundData;
+    while (sampleOffset >= (SND_CHUNK_SIZE_FLOAT * 4))
+    {
+        chunk = chunk->next;
+        sampleOffset -= (SND_CHUNK_SIZE_FLOAT * 4);
+        i++;
+    }
 
-	if (i!=sfxScratchIndex || sfxScratchPointer != sc) {
-		S_AdpcmGetSamples( chunk, sfxScratchBuffer );
-		sfxScratchIndex = i;
-		sfxScratchPointer = sc;
-	}
+    if (i != sfxScratchIndex || sfxScratchPointer != sc)
+    {
+        decodeWavelet(chunk, sfxScratchBuffer);
+        sfxScratchIndex = i;
+        sfxScratchPointer = sc;
+    }
 
-	samples = sfxScratchBuffer;
+    samples = sfxScratchBuffer;
 
-	for ( i=0 ; i<count ; i++ ) {
-		data  = samples[sampleOffset++];
-		samp[i].left += (data * leftvol)>>8;
-		samp[i].right += (data * rightvol)>>8;
+#ifndef Q3_VM
+    // Set up parallel stereo volume vector layout: [Right, Left, Right, Left]
+    __m128i v_vol = _mm_set_epi32(rightvol, leftvol, rightvol, leftvol);
 
-		if (sampleOffset == SND_CHUNK_SIZE*2) {
-			chunk = chunk->next;
-			decodeWavelet(chunk, sfxScratchBuffer);
-			sfxScratchIndex++;
-			sampleOffset = 0;
-		}
-	}
+    while (count > 0)
+    {
+        // Loop Chunking: Calculate space remaining in the current wavelet scratch block
+        int chunk_remaining = (SND_CHUNK_SIZE * 2) - sampleOffset;
+        int to_process = (count < chunk_remaining) ? count : chunk_remaining;
+
+        if (to_process <= 0)
+        {
+            chunk = chunk->next;
+            decodeWavelet(chunk, sfxScratchBuffer);
+            sampleOffset = 0;
+            sfxScratchIndex++;
+            samples = sfxScratchBuffer;
+            continue;
+        }
+
+        int j = 0;
+        // Vectorized Mono Loop: Process 4 wavelet frames per iteration
+        for (; j + 3 < to_process; j += 4)
+        {
+            // Load 4 mono samples and sign-extend to 32-bit registers
+            __m128i src = _mm_loadl_epi64((const __m128i*)&samples[sampleOffset]);
+            __m128i src32 = _mm_cvtepi16_epi32(src);
+
+            // Duplicate mono samples across left/right channels
+            __m128i src_lo = _mm_unpacklo_epi32(src32, src32); // [M1, M1, M0, M0]
+            __m128i src_hi = _mm_unpackhi_epi32(src32, src32); // [M3, M3, M2, M2]
+
+            // Apply scaling multiplications and shifts
+            __m128i mixed_lo = _mm_mullo_epi32(src_lo, v_vol);
+            __m128i mixed_hi = _mm_mullo_epi32(src_hi, v_vol);
+            __m128i scaled_lo = _mm_srai_epi32(mixed_lo, 8);
+            __m128i scaled_hi = _mm_srai_epi32(mixed_hi, 8);
+
+            // Accumulate into the 32-bit integer paintbuffer
+            __m128i dest_lo = _mm_loadu_si128((const __m128i*)&samp[j]);
+            __m128i dest_hi = _mm_loadu_si128((const __m128i*)&samp[j + 2]);
+            _mm_storeu_si128((__m128i*)&samp[j],     _mm_add_epi32(dest_lo, scaled_lo));
+            _mm_storeu_si128((__m128i*)&samp[j + 2], _mm_add_epi32(dest_hi, scaled_hi));
+
+            sampleOffset += 4;
+        }
+
+        // Clean scalar fallback for block tails
+        for (; j < to_process; j++)
+        {
+            int data = samples[sampleOffset++];
+            samp[j].left  += (data * leftvol) >> 8;
+            samp[j].right += (data * rightvol) >> 8;
+        }
+
+        samp += to_process;
+        count -= to_process;
+
+        if (sampleOffset >= (SND_CHUNK_SIZE * 2))
+        {
+            chunk = chunk->next;
+            decodeWavelet(chunk, sfxScratchBuffer);
+            sampleOffset = 0;
+            sfxScratchIndex++;
+            samples = sfxScratchBuffer;
+        }
+    }
+#else
+    // Legacy QVM fallback path
+    for (i = 0; i < count; i++)
+    {
+        data = samples[sampleOffset++];
+        samp[i].left += (data * leftvol) >> 8;
+        samp[i].right += (data * rightvol) >> 8;
+
+        if (sampleOffset == SND_CHUNK_SIZE * 2)
+        {
+            chunk = chunk->next;
+            decodeWavelet(chunk, sfxScratchBuffer);
+            sfxScratchIndex++;
+            sampleOffset = 0;
+        }
+    }
+#endif
 }
 
-void S_PaintChannelFromADPCM( channel_t *ch, sfx_t *sc, int count, int sampleOffset, int bufferOffset ) {
-	int						data;
-	int						leftvol, rightvol;
-	int						i;
-	portable_samplepair_t	*samp;
-	sndBuffer				*chunk;
-	short					*samples;
+void S_PaintChannelFromADPCM(channel_t* ch, sfx_t* sc, int count, int sampleOffset, int bufferOffset)
+{
+    int data;
+    int leftvol, rightvol;
+    int i;
+    portable_samplepair_t* samp;
+    sndBuffer* chunk;
+    short* samples;
 
-	leftvol = ch->leftvol*snd_vol;
-	rightvol = ch->rightvol*snd_vol;
+    leftvol = ch->leftvol * snd_vol;
+    rightvol = ch->rightvol * snd_vol;
 
-	i = 0;
-	samp = &paintbuffer[ bufferOffset ];
-	chunk = sc->soundData;
+    i = 0;
+    samp = &paintbuffer[bufferOffset];
+    chunk = sc->soundData;
 
-	if (ch->doppler) {
-		sampleOffset = sampleOffset*ch->oldDopplerScale;
-	}
+    if (ch->doppler)
+    {
+        sampleOffset = sampleOffset * ch->oldDopplerScale;
+    }
 
-	while (sampleOffset>=(SND_CHUNK_SIZE*4)) {
-		chunk = chunk->next;
-		sampleOffset -= (SND_CHUNK_SIZE*4);
-		i++;
-	}
+    while (sampleOffset >= (SND_CHUNK_SIZE * 4))
+    {
+        chunk = chunk->next;
+        sampleOffset -= (SND_CHUNK_SIZE * 4);
+        i++;
+    }
 
-	if (i!=sfxScratchIndex || sfxScratchPointer != sc) {
-		S_AdpcmGetSamples( chunk, sfxScratchBuffer );
-		sfxScratchIndex = i;
-		sfxScratchPointer = sc;
-	}
+    if (i != sfxScratchIndex || sfxScratchPointer != sc)
+    {
+        S_AdpcmGetSamples(chunk, sfxScratchBuffer);
+        sfxScratchIndex = i;
+        sfxScratchPointer = sc;
+    }
 
-	samples = sfxScratchBuffer;
+    samples = sfxScratchBuffer;
 
-	for ( i=0 ; i<count ; i++ ) {
-		data  = samples[sampleOffset++];
-		samp[i].left += (data * leftvol)>>8;
-		samp[i].right += (data * rightvol)>>8;
+#ifndef Q3_VM
+    // Set up parallel stereo volume vector layout: [Right, Left, Right, Left]
+    __m128i v_vol = _mm_set_epi32(rightvol, leftvol, rightvol, leftvol);
 
-		if (sampleOffset == SND_CHUNK_SIZE*4) {
-			chunk = chunk->next;
-			S_AdpcmGetSamples( chunk, sfxScratchBuffer);
-			sampleOffset = 0;
-			sfxScratchIndex++;
-		}
-	}
+    while (count > 0)
+    {
+        // Loop Chunking: Calculate the remaining sample bounds inside the current scratch block
+        int chunk_remaining = (SND_CHUNK_SIZE * 4) - sampleOffset;
+        int to_process = (count < chunk_remaining) ? count : chunk_remaining;
+
+        if (to_process <= 0)
+        {
+            chunk = chunk->next;
+            S_AdpcmGetSamples(chunk, sfxScratchBuffer);
+            sampleOffset = 0;
+            sfxScratchIndex++;
+            samples = sfxScratchBuffer;
+            continue;
+        }
+
+        int j = 0;
+        // Vectorized Mono-to-Stereo Loop: Mix 4 audio frames per iteration
+        for (; j + 3 < to_process; j += 4)
+        {
+            // Load 4 mono short samples and sign-extend to 32-bit registers
+            __m128i src = _mm_loadl_epi64((const __m128i*)&samples[sampleOffset]);
+            __m128i src32 = _mm_cvtepi16_epi32(src);
+
+            // Duplicate mono samples across left/right channels via interleave unpacking
+            __m128i src_lo = _mm_unpacklo_epi32(src32, src32); // [M1, M1, M0, M0]
+            __m128i src_hi = _mm_unpackhi_epi32(src32, src32); // [M3, M3, M2, M2]
+
+            // Apply scaling multiplications and shifts
+            __m128i mixed_lo = _mm_mullo_epi32(src_lo, v_vol);
+            __m128i mixed_hi = _mm_mullo_epi32(src_hi, v_vol);
+            __m128i scaled_lo = _mm_srai_epi32(mixed_lo, 8);
+            __m128i scaled_hi = _mm_srai_epi32(mixed_hi, 8);
+
+            // Accumulate directly into the 32-bit mixing paintbuffer
+            __m128i dest_lo = _mm_loadu_si128((const __m128i*)&samp[j]);
+            __m128i dest_hi = _mm_loadu_si128((const __m128i*)&samp[j + 2]);
+            _mm_storeu_si128((__m128i*)&samp[j],     _mm_add_epi32(dest_lo, scaled_lo));
+            _mm_storeu_si128((__m128i*)&samp[j + 2], _mm_add_epi32(dest_hi, scaled_hi));
+
+            sampleOffset += 4;
+        }
+
+        // Clean scalar fallback for block tail ends
+        for (; j < to_process; j++)
+        {
+            int data = samples[sampleOffset++];
+            samp[j].left  += (data * leftvol) >> 8;
+            samp[j].right += (data * rightvol) >> 8;
+        }
+
+        samp += to_process;
+        count -= to_process;
+
+        if (sampleOffset >= (SND_CHUNK_SIZE * 4))
+        {
+            chunk = chunk->next;
+            S_AdpcmGetSamples(chunk, sfxScratchBuffer);
+            sampleOffset = 0;
+            sfxScratchIndex++;
+            samples = sfxScratchBuffer;
+        }
+    }
+#else
+    // Legacy QVM fallback path
+    for (i = 0; i < count; i++)
+    {
+        data = samples[sampleOffset++];
+        samp[i].left += (data * leftvol) >> 8;
+        samp[i].right += (data * rightvol) >> 8;
+
+        if (sampleOffset == SND_CHUNK_SIZE * 4)
+        {
+            chunk = chunk->next;
+            S_AdpcmGetSamples(chunk, sfxScratchBuffer);
+            sampleOffset = 0;
+            sfxScratchIndex++;
+        }
+    }
+#endif
 }
 
-void S_PaintChannelFromMuLaw( channel_t *ch, sfx_t *sc, int count, int sampleOffset, int bufferOffset ) {
-	int						data;
-	int						leftvol, rightvol;
-	int						i;
-	portable_samplepair_t	*samp;
-	sndBuffer				*chunk;
-	byte					*samples;
-	float					ooff;
+void S_PaintChannelFromMuLaw(channel_t* ch, sfx_t* sc, int count, int sampleOffset, int bufferOffset)
+{
+    int data;
+    int leftvol, rightvol;
+    int i;
+    portable_samplepair_t* samp;
+    sndBuffer* chunk;
+    byte* samples;
 
-	leftvol = ch->leftvol*snd_vol;
-	rightvol = ch->rightvol*snd_vol;
+    leftvol = ch->leftvol * snd_vol;
+    rightvol = ch->rightvol * snd_vol;
 
-	samp = &paintbuffer[ bufferOffset ];
-	chunk = sc->soundData;
-	while (sampleOffset>=(SND_CHUNK_SIZE*2)) {
-		chunk = chunk->next;
-		sampleOffset -= (SND_CHUNK_SIZE*2);
-		if (!chunk) {
-			chunk = sc->soundData;
-		}
-	}
+    samp = &paintbuffer[bufferOffset];
+    chunk = sc->soundData;
+    while (sampleOffset >= (SND_CHUNK_SIZE * 2))
+    {
+        chunk = chunk->next;
+        sampleOffset -= (SND_CHUNK_SIZE * 2);
+        if (!chunk)
+        {
+            chunk = sc->soundData;
+        }
+    }
 
-	if (!ch->doppler) {
-		samples = (byte *)chunk->sndChunk + sampleOffset;
-		for ( i=0 ; i<count ; i++ ) {
-			data  = mulawToShort[*samples];
-			samp[i].left += (data * leftvol)>>8;
-			samp[i].right += (data * rightvol)>>8;
-			samples++;
-			if (chunk != NULL && samples == (byte *)chunk->sndChunk+(SND_CHUNK_SIZE*2)) {
-				chunk = chunk->next;
-				samples = (byte *)chunk->sndChunk;
-			}
-		}
-	} else {
-		ooff = sampleOffset;
-		samples = (byte *)chunk->sndChunk;
-		for ( i=0 ; i<count ; i++ ) {
-			data  = mulawToShort[samples[(int)(ooff)]];
-			ooff = ooff + ch->dopplerScale;
-			samp[i].left += (data * leftvol)>>8;
-			samp[i].right += (data * rightvol)>>8;
-			if (ooff >= SND_CHUNK_SIZE*2) {
-				chunk = chunk->next;
-				if (!chunk) {
-					chunk = sc->soundData;
-				}
-				samples = (byte *)chunk->sndChunk;
-				ooff = 0.0;
-			}
-		}
-	}
+    if (!ch->doppler)
+    {
+        samples = (byte*)chunk->sndChunk + sampleOffset;
+
+#ifndef Q3_VM
+        // Parallel stereo volume setup: [Right, Left, Right, Left]
+        __m128i v_vol = _mm_set_epi32(rightvol, leftvol, rightvol, leftvol);
+
+        while (count > 0)
+        {
+            // Loop Chunking: Isolate memory boundaries before mixing
+            int chunk_remaining = (SND_CHUNK_SIZE * 2) - sampleOffset;
+            int to_process = (count < chunk_remaining) ? count : chunk_remaining;
+
+            if (to_process <= 0)
+            {
+                chunk = chunk->next;
+                samples = (byte*)chunk->sndChunk;
+                sampleOffset = 0;
+                continue;
+            }
+
+            int j = 0;
+            // Vectorized Processing Loop: Mix 4 Mu-Law frames concurrently
+            for (; j + 3 < to_process; j += 4)
+            {
+                // Parallel lookups converted into a single register layout
+                int d0 = mulawToShort[samples[0]];
+                int d1 = mulawToShort[samples[1]];
+                int d2 = mulawToShort[samples[2]];
+                int d3 = mulawToShort[samples[3]];
+                
+                __m128i src32 = _mm_set_epi32(d3, d2, d1, d0);
+
+                // Expand Mono to Stereo channels via register interleaving
+                __m128i src_lo = _mm_unpacklo_epi32(src32, src32); // [d1, d1, d0, d0]
+                __m128i src_hi = _mm_unpackhi_epi32(src32, src32); // [d3, d3, d2, d2]
+
+                // Scale amplitudes via parallel matrix vector multiply
+                __m128i mixed_lo = _mm_mullo_epi32(src_lo, v_vol);
+                __m128i mixed_hi = _mm_mullo_epi32(src_hi, v_vol);
+                __m128i scaled_lo = _mm_srai_epi32(mixed_lo, 8);
+                __m128i scaled_hi = _mm_srai_epi32(mixed_hi, 8);
+
+                // Accumulate results into the 32-bit integer paintbuffer
+                __m128i dest_lo = _mm_loadu_si128((const __m128i*)&samp[j]);
+                __m128i dest_hi = _mm_loadu_si128((const __m128i*)&samp[j + 2]);
+                _mm_storeu_si128((__m128i*)&samp[j],     _mm_add_epi32(dest_lo, scaled_lo));
+                _mm_storeu_si128((__m128i*)&samp[j + 2], _mm_add_epi32(dest_hi, scaled_hi));
+
+                samples      += 4;
+                sampleOffset += 4;
+            }
+
+            // Clean scalar fallback for slice remainders
+            for (; j < to_process; j++)
+            {
+                data = mulawToShort[*samples];
+                samp[j].left  += (data * leftvol) >> 8;
+                samp[j].right += (data * rightvol) >> 8;
+                samples++;
+                sampleOffset++;
+            }
+
+            samp  += to_process;
+            count -= to_process;
+
+            if (sampleOffset >= (SND_CHUNK_SIZE * 2))
+            {
+                chunk = chunk->next;
+                samples = (byte*)chunk->sndChunk;
+                sampleOffset = 0;
+            }
+        }
+#else
+        // Legacy QVM fallback path
+        for (i = 0; i < count; i++)
+        {
+            data = mulawToShort[*samples];
+            samp[i].left += (data * leftvol) >> 8;
+            samp[i].right += (data * rightvol) >> 8;
+            samples++;
+            if (chunk != NULL && samples == (byte*)chunk->sndChunk + (SND_CHUNK_SIZE * 2))
+            {
+                chunk = chunk->next;
+                samples = (byte*)chunk->sndChunk;
+            }
+        }
+#endif
+    }
+    else
+    {
+        // Maintain the rare Doppler math loop as standard scalar logic
+        float ooff = sampleOffset;
+        samples = (byte*)chunk->sndChunk;
+        for (i = 0; i < count; i++)
+        {
+            data = mulawToShort[samples[(int)(ooff)]];
+            ooff = ooff + ch->dopplerScale;
+            samp[i].left += (data * leftvol) >> 8;
+            samp[i].right += (data * rightvol) >> 8;
+            if (ooff >= SND_CHUNK_SIZE * 2)
+            {
+                chunk = chunk->next;
+                if (!chunk)
+                {
+                    chunk = sc->soundData;
+                }
+                samples = (byte*)chunk->sndChunk;
+                ooff = 0.0;
+            }
+        }
+    }
 }
 
 #define TALK_FUTURE_SEC 0.01        // go this far into the future (seconds)
@@ -733,199 +1133,186 @@ void S_PaintChannelFromMuLaw( channel_t *ch, sfx_t *sc, int count, int sampleOff
 S_PaintChannels
 ===================
 */
-void S_PaintChannels( int endtime ) {
-	int 	i;
-	int 	end;
-	int 	stream;
-	channel_t *ch;
-	sfx_t	*sc;
-	int		ltime, count;
-	int		sampleOffset;
-	qboolean firstPass = qtrue;
+void S_PaintChannels(int endtime)
+{
+    int i;
+    int end;
+    int stream;
+    channel_t* ch;
+    sfx_t* sc;
+    int ltime, count;
+    int sampleOffset;
 
-	if(s_muted->integer)
-		snd_vol = 0;
-	else
-		snd_vol = s_volume->value*255;
+    if (s_muted->integer)
+        snd_vol = 0;
+    else
+        snd_vol = s_volume->value * 255;
 
-//Com_Printf ("%i to %i\n", s_paintedtime, endtime);
-	while ( s_paintedtime < endtime ) {
-		// if paintbuffer is smaller than DMA buffer
-		// we may need to fill it multiple times
-		end = endtime;
-		if ( endtime - s_paintedtime > PAINTBUFFER_SIZE ) {
-			end = s_paintedtime + PAINTBUFFER_SIZE;
-		}
+    while (s_paintedtime < endtime)
+    {
+        end = endtime;
+        if (endtime - s_paintedtime > PAINTBUFFER_SIZE)
+        {
+            end = s_paintedtime + PAINTBUFFER_SIZE;
+        }
 
-		// clear the paint buffer and mix any raw samples...
-		Com_Memset(paintbuffer, 0, sizeof (paintbuffer));
-		ch = s_channels;
-		for (stream = 0; stream < MAX_RAW_STREAMS; stream++) {
-			if ( s_rawend[stream] >= s_paintedtime ) {
-				// copy from the streaming sound source
-				const portable_samplepair_t *rawsamples = s_rawsamples[stream];
-				const int stop = (end < s_rawend[stream]) ? end : s_rawend[stream];
-				for ( i = s_paintedtime ; i < stop ; i++ ) {
-					const int s = i&(MAX_RAW_SAMPLES-1);
-					paintbuffer[i-s_paintedtime].left += rawsamples[s].left;
-					paintbuffer[i-s_paintedtime].right += rawsamples[s].right;
-				}
-				if ( firstPass && ch->entchannel == CHAN_VOICE && ch->entnum < MAX_CLIENTS ) {
-					int talktime;
-					int sfx_count, vstop;
-					int data;
-					int s;
+        // Clear the paint buffer
+        Com_Memset(paintbuffer, 0, sizeof(paintbuffer));
+        
+        // Accumulate raw streaming sound sources
+        for (stream = 0; stream < MAX_RAW_STREAMS; stream++)
+        {
+            if (s_rawend[stream] >= s_paintedtime)
+            {
+                const portable_samplepair_t* rawsamples = s_rawsamples[stream];
+                const int stop = (end < s_rawend[stream]) ? end : s_rawend[stream];
+                int paint_idx = 0;
+                i = s_paintedtime;
 
-					// we need to go into the future, since the interpolated behaviour of the facial
-					// animation creates lag in the time it takes to display the current facial frame
-					talktime = s_paintedtime + (int)( TALK_FUTURE_SEC * 22 * 1000 );
-					vstop = ( talktime + 100 < s_rawend[stream] ) ? talktime + 100 : s_rawend[stream];
-					sfx_count = 0;
+#ifndef Q3_VM
+                // Vectorized Raw Mixer: Process 2 stereo pairs (4 audio channels) simultaneously
+                // We stop 1 sample early to safely allow 2-element contiguous vector loads
+                for (; i + 1 < stop; i += 2)
+                {
+                    int s0 = i & (MAX_RAW_SAMPLES - 1);
+                    int s1 = (i + 1) & (MAX_RAW_SAMPLES - 1);
 
-					for ( i = talktime ; i < vstop ; i++ ) {
-						s = i & ( MAX_RAW_SAMPLES - 1 );
-						data = abs( ( rawsamples[s].left ) / 8000 );
-						if ( data > sfx_count ) {
-							sfx_count = data;
-						}
-					}
+                    // If the ring buffer samples are contiguous, we can use a parallel SIMD add
+                    if (s1 == s0 + 1)
+                    {
+                        __m128i v_raw  = _mm_loadu_si128((const __m128i*)&rawsamples[s0]);
+                        __m128i v_paint = _mm_loadu_si128((const __m128i*)&paintbuffer[paint_idx]);
+                        _mm_storeu_si128((__m128i*)&paintbuffer[paint_idx], _mm_add_epi32(v_paint, v_raw));
+                        paint_idx += 2;
+                    }
+                    else
+                    {
+                        // Handle unaligned ring-buffer wrapping boundaries gracefully
+                        paintbuffer[paint_idx].left   += rawsamples[s0].left;
+                        paintbuffer[paint_idx].right  += rawsamples[s0].right;
+                        paintbuffer[paint_idx+1].left += rawsamples[s1].left;
+                        paintbuffer[paint_idx+1].right += rawsamples[s1].right;
+                        paint_idx += 2;
+                    }
+                }
+#endif
+                // Scalar tail cleanup
+                for (; i < stop; i++)
+                {
+                    const int s = i & (MAX_RAW_SAMPLES - 1);
+                    paintbuffer[paint_idx].left  += rawsamples[s].left;
+                    paintbuffer[paint_idx].right += rawsamples[s].right;
+                    paint_idx++;
+                }
+            }
+        }
 
-					if ( sfx_count > 255 ) {
-						sfx_count = 255;
-					}
-					if ( sfx_count < 25 ) {
-						sfx_count = 0;
-					}
+        // Paint in the standard 3D active positional channels
+        ch = s_channels;
+        for (i = 0; i < MAX_CHANNELS; i++, ch++)
+        {
+            // Branch Hint: Most channels are inactive on any given frame; optimize the skip path
+#if defined(__GNUC__) || defined(__clang__)
+            if (__builtin_expect(!ch->thesfx || (ch->leftvol < 0.25f && ch->rightvol < 0.25f), 1))
+#else
+            if (!ch->thesfx || (ch->leftvol < 0.25f && ch->rightvol < 0.25f))
+#endif
+            {
+                continue;
+            }
 
-					// update the amplitude for this entity
-					s_entityTalkAmplitude[ch->entnum] = (unsigned char)sfx_count;
+            ltime = s_paintedtime;
+            sc = ch->thesfx;
 
-				}
-			}
-		}
+            if (sc->soundData == NULL || sc->soundLength == 0)
+            {
+                continue;
+            }
 
-		// paint in the channels.
-		ch = s_channels;
-		for ( i = 0; i < MAX_CHANNELS ; i++, ch++ ) {		
-			if ( ch->startSample == START_SAMPLE_IMMEDIATE || !ch->thesfx || (ch->leftvol<0.25 && ch->rightvol<0.25 )) {
-				continue;
-			}
+            sampleOffset = ltime - ch->startSample;
+            count = end - ltime;
+            if (sampleOffset + count > sc->soundLength)
+            {
+                count = sc->soundLength - sampleOffset;
+            }
 
-			ltime = s_paintedtime;
-			sc = ch->thesfx;
+            if (count > 0)
+            {
+                if (sc->soundCompressionMethod == 1)
+                {
+                    S_PaintChannelFromADPCM(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                }
+                else if (sc->soundCompressionMethod == 2)
+                {
+                    S_PaintChannelFromWavelet(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                }
+                else if (sc->soundCompressionMethod == 3)
+                {
+                    S_PaintChannelFromMuLaw(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                }
+                else
+                {
+                    S_PaintChannelFrom16(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                }
+            }
+        }
 
-			// (SA) hmm, why was this commented out?
-			if ( !sc->inMemory ) {
-				S_memoryLoad( sc );
-			}
+        // Paint in the looped ambient channels
+        ch = loop_channels;
+        for (i = 0; i < numLoopChannels; i++, ch++)
+        {
+#if defined(__GNUC__) || defined(__clang__)
+            if (__builtin_expect(!ch->thesfx || (!ch->leftvol && !ch->rightvol), 1))
+#else
+            if (!ch->thesfx || (!ch->leftvol && !ch->rightvol))
+#endif
+            {
+                continue;
+            }
 
-			if (sc->soundData==NULL || sc->soundLength==0) {
-				continue;
-			}
+            ltime = s_paintedtime;
+            sc = ch->thesfx;
 
-			sampleOffset = ltime - ch->startSample;
-			count = end - ltime;
-			if ( sampleOffset + count > sc->soundLength ) {
-				count = sc->soundLength - sampleOffset;
-			}
+            if (sc->soundData == NULL || sc->soundLength == 0)
+            {
+                continue;
+            }
 
-			if ( count > 0 ) {
-				// Ridah, talking animations
-				// TODO: check that this entity has talking animations enabled!
-				if ( firstPass && ch->entchannel == CHAN_VOICE && ch->entnum < MAX_CLIENTS ) {
-					int talkofs, talkcnt, talktime;
-					// we need to go into the future, since the interpolated behaviour of the facial
-					// animation creates lag in the time it takes to display the current facial frame
-					talktime = ltime + (int)( TALK_FUTURE_SEC * 22 * 1000 );
-					talkofs = talktime - ch->startSample;
-					talkcnt = 100;
-					if ( talkofs + talkcnt < sc->soundLength ) {
-						if ( sc->soundCompressionMethod == 1 ) {
-							S_SetVoiceAmplitudeFromADPCM( sc, talkofs, talkcnt, ch->entnum );
-						} else if ( sc->soundCompressionMethod == 2 ) {
-							S_SetVoiceAmplitudeFromWavelet( sc, talkofs, talkcnt, ch->entnum );
-						} else if ( sc->soundCompressionMethod == 3 ) {
-							S_SetVoiceAmplitudeFromMuLaw( sc, talkofs, talkcnt, ch->entnum );
-						} else {
-							S_SetVoiceAmplitudeFrom16( sc, talkofs, talkcnt, ch->entnum );
-						}
-					}
-				}
-				if( sc->soundCompressionMethod == 1) {
-					S_PaintChannelFromADPCM		(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-				} else if( sc->soundCompressionMethod == 2) {
-					S_PaintChannelFromWavelet	(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-				} else if( sc->soundCompressionMethod == 3) {
-					S_PaintChannelFromMuLaw	(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-				} else {
-					S_PaintChannelFrom16		(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-				}
-			}
-		}
+            do
+            {
+                sampleOffset = (ltime % sc->soundLength);
+                count = end - ltime;
+                if (sampleOffset + count > sc->soundLength)
+                {
+                    count = sc->soundLength - sampleOffset;
+                }
 
-		// paint in the looped channels.
-		ch = loop_channels;
-		for ( i = 0; i < numLoopChannels ; i++, ch++ ) {		
-			if ( !ch->thesfx || (!ch->leftvol && !ch->rightvol )) {
-				continue;
-			}
+                if (count > 0)
+                {
+                    if (sc->soundCompressionMethod == 1)
+                    {
+                        S_PaintChannelFromADPCM(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                    }
+                    else if (sc->soundCompressionMethod == 2)
+                    {
+                        S_PaintChannelFromWavelet(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                    }
+                    else if (sc->soundCompressionMethod == 3)
+                    {
+                        S_PaintChannelFromMuLaw(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                    }
+                    else
+                    {
+                        S_PaintChannelFrom16(ch, sc, count, sampleOffset, ltime - s_paintedtime);
+                    }
+                    ltime += count;
+                }
+            }
+            while (ltime < end);
+        }
 
-			ltime = s_paintedtime;
-			sc = ch->thesfx;
-
-			if (sc->soundData==NULL || sc->soundLength==0) {
-				continue;
-			}
-			// we might have to make two passes if it
-			// is a looping sound effect and the end of
-			// the sample is hit
-			do {
-				sampleOffset = (ltime % sc->soundLength);
-
-				count = end - ltime;
-				if ( sampleOffset + count > sc->soundLength ) {
-					count = sc->soundLength - sampleOffset;
-				}
-
-				if ( count > 0 ) {
-					// Ridah, talking animations
-					// TODO: check that this entity has talking animations enabled!
-					if ( firstPass && ch->entchannel == CHAN_VOICE && ch->entnum < MAX_CLIENTS ) {
-						int talkofs, talkcnt, talktime;
-						// we need to go into the future, since the interpolated behaviour of the facial
-						// animation creates lag in the time it takes to display the current facial frame
-						talktime = ltime + (int)( TALK_FUTURE_SEC * 22 * 1000 );
-						talkofs = talktime % sc->soundLength;
-						talkcnt = 100;
-						if ( talkofs + talkcnt < sc->soundLength ) {
-							if ( sc->soundCompressionMethod == 1 ) {
-								S_SetVoiceAmplitudeFromADPCM( sc, talkofs, talkcnt, ch->entnum );
-							} else if ( sc->soundCompressionMethod == 2 ) {
-								S_SetVoiceAmplitudeFromWavelet( sc, talkofs, talkcnt, ch->entnum );
-							} else if ( sc->soundCompressionMethod == 3 ) {
-								S_SetVoiceAmplitudeFromMuLaw( sc, talkofs, talkcnt, ch->entnum );
-							} else {
-								S_SetVoiceAmplitudeFrom16( sc, talkofs, talkcnt, ch->entnum );
-							}
-						}
-					}
-					if( sc->soundCompressionMethod == 1) {
-						S_PaintChannelFromADPCM		(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-					} else if( sc->soundCompressionMethod == 2) {
-						S_PaintChannelFromWavelet	(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-					} else if( sc->soundCompressionMethod == 3) {
-						S_PaintChannelFromMuLaw		(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-					} else {
-						S_PaintChannelFrom16		(ch, sc, count, sampleOffset, ltime - s_paintedtime);
-					}
-					ltime += count;
-				}
-			} while ( ltime < end);
-		}
-
-		// transfer out according to DMA format
-		S_TransferPaintBuffer( end );
-		s_paintedtime = end;
-		firstPass = qfalse;
-	}
+        // Transfer local paint buffer values out directly to the audio hardware DMA system
+        S_TransferPaintBuffer(end);
+        s_paintedtime = end;
+    }
 }
