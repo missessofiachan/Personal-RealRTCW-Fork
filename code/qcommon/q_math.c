@@ -33,8 +33,11 @@ If you have questions concerning this license or the applicable additional terms
 // Some of the vector functions are static inline in q_shared.h. q3asm
 // doesn't understand static functions though, so we only want them in
 // one file. That's what this is about.
-#ifdef Q3_VM
-#define __Q3_VM_MATH
+// Only include SIMD headers if we are NOT compiling for the Quake VM
+#ifndef Q3_VM
+#define Q_HAS_SIMD 1
+#include <smmintrin.h> // Intel SSE4.1 intrinsics
+#include <immintrin.h> // Required for FMA and advanced intrinsics
 #endif
 
 #include "q_shared.h"
@@ -193,26 +196,72 @@ signed short ClampShort( int i ) {
 
 
 // this isn't a real cheap function to call!
-int DirToByte( vec3_t dir ) {
-	int i, best;
-	float d, bestd;
 
-	if ( !dir ) {
-		return 0;
-	}
+int DirToByte(vec3_t dir)
+{
+    int i, best;
+    float bestd;
 
-	bestd = 0;
-	best = 0;
-	for ( i = 0 ; i < NUMVERTEXNORMALS ; i++ )
-	{
-		d = DotProduct( dir, bytedirs[i] );
-		if ( d > bestd ) {
-			bestd = d;
-			best = i;
-		}
-	}
+    if (!dir)
+    {
+        return 0;
+    }
 
-	return best;
+    bestd = 0.0f;
+    best = 0;
+
+    // 1. Broadcast 'dir' components into a SIMD register: [0, dir[2], dir[1], dir[0]]
+    __m128 v_dir = _mm_set_ps(0.0f, dir[2], dir[1], dir[0]);
+
+    // Track the best distances in a SIMD register initialized to 0
+    __m128 v_bestd = _mm_setzero_ps(); 
+
+    // 2. Process 4 vectors at a time. 
+    // Note: 162 isn't perfectly divisible by 4 (162 / 4 = 40.5).
+    // We loop up to 160 safely using SIMD, then handle the last 2 scalars at the end.
+    for (i = 0; i < 160; i += 4)
+    {
+        // Load 4 consecutive vec3s from the bytedirs table
+        __m128 b0 = _mm_set_ps(0.0f, bytedirs[i+0][2], bytedirs[i+0][1], bytedirs[i+0][0]);
+        __m128 b1 = _mm_set_ps(0.0f, bytedirs[i+1][2], bytedirs[i+1][1], bytedirs[i+1][0]);
+        __m128 b2 = _mm_set_ps(0.0f, bytedirs[i+2][2], bytedirs[i+2][1], bytedirs[i+2][0]);
+        __m128 b3 = _mm_set_ps(0.0f, bytedirs[i+3][2], bytedirs[i+3][1], bytedirs[i+3][0]);
+
+        // Calculate 4 dot products instantly
+        // 0x71 mask: multiply X, Y, Z components and store the result in the lowest slot (index 0)
+        __m128 dot0 = _mm_dp_ps(v_dir, b0, 0x71);
+        __m128 dot1 = _mm_dp_ps(v_dir, b1, 0x71);
+        __m128 dot2 = _mm_dp_ps(v_dir, b2, 0x71);
+        __m128 dot3 = _mm_dp_ps(v_dir, b3, 0x71);
+
+        // Pack the 4 dot products into a single SIMD register: [dot3, dot2, dot1, dot0]
+        __m128 dots = _mm_unpacklo_ps(_mm_unpacklo_ps(dot0, dot2), _mm_unpacklo_ps(dot1, dot3));
+
+        // Scalar extraction out of the packed register to update the best match
+        // (Keeping the conditional updates scalar prevents complex mask generation errors)
+        float d0 = _mm_cvtss_f32(dots);
+        float d1 = _mm_cvtss_f32(_mm_shuffle_ps(dots, dots, _MM_SHUFFLE(1, 1, 1, 1)));
+        float d2 = _mm_cvtss_f32(_mm_shuffle_ps(dots, dots, _MM_SHUFFLE(2, 2, 2, 2)));
+        float d3 = _mm_cvtss_f32(_mm_shuffle_ps(dots, dots, _MM_SHUFFLE(3, 3, 3, 3)));
+
+        if (d0 > bestd) { bestd = d0; best = i + 0; }
+        if (d1 > bestd) { bestd = d1; best = i + 1; }
+        if (d2 > bestd) { bestd = d2; best = i + 2; }
+        if (d3 > bestd) { bestd = d3; best = i + 3; }
+    }
+
+    // 3. Clean up loop remainder (elements 160 and 161)
+    for (; i < NUMVERTEXNORMALS; i++)
+    {
+        float d = dir[0]*bytedirs[i][0] + dir[1]*bytedirs[i][1] + dir[2]*bytedirs[i][2];
+        if (d > bestd)
+        {
+            bestd = d;
+            best = i;
+        }
+    }
+
+    return best;
 }
 
 void ByteToDir( int b, vec3_t dir ) {
@@ -485,10 +534,29 @@ void MakeNormalVectors( const vec3_t forward, vec3_t right, vec3_t up ) {
 }
 
 
-void VectorRotate( vec3_t in, vec3_t matrix[3], vec3_t out ) {
-	out[0] = DotProduct( in, matrix[0] );
-	out[1] = DotProduct( in, matrix[1] );
-	out[2] = DotProduct( in, matrix[2] );
+void VectorRotate(vec3_t in, vec3_t matrix[3], vec3_t out)
+{
+#ifndef Q3_VM
+ 
+    __m128 v_in = _mm_set_ps(0.0f, in[2], in[1], in[0]);
+
+    __m128 row0 = _mm_set_ps(0.0f, matrix[0][2], matrix[0][1], matrix[0][0]);
+    __m128 row1 = _mm_set_ps(0.0f, matrix[1][2], matrix[1][1], matrix[1][0]);
+    __m128 row2 = _mm_set_ps(0.0f, matrix[2][2], matrix[2][1], matrix[2][0]);
+
+    __m128 dot0 = _mm_dp_ps(v_in, row0, 0x71);
+    __m128 dot1 = _mm_dp_ps(v_in, row1, 0x71);
+    __m128 dot2 = _mm_dp_ps(v_in, row2, 0x71);
+
+    _mm_store_ss(&out[0], dot0);
+    _mm_store_ss(&out[1], dot1);
+    _mm_store_ss(&out[2], dot2);
+#else
+    // QVM FALLBACK (Simple scalar math q3asm understands)
+    out[0] = in[0] * matrix[0][0] + in[1] * matrix[0][1] + in[2] * matrix[0][2];
+    out[1] = in[0] * matrix[1][0] + in[1] * matrix[1][1] + in[2] * matrix[1][2];
+    out[2] = in[0] * matrix[2][0] + in[1] * matrix[2][1] + in[2] * matrix[2][2];
+#endif
 }
 
 //============================================================================
@@ -497,19 +565,36 @@ void VectorRotate( vec3_t in, vec3_t matrix[3], vec3_t out ) {
 /*
 ** float q_rsqrt( float number )
 */
-float Q_rsqrt( float number ) {
-	floatint_t t;
-	float x2, y;
-	const float threehalfs = 1.5F;
+float Q_rsqrt(float number)
+{
+#ifndef Q3_VM
+    // 1. Load the single scalar float into a SIMD register
+    __m128 reg = _mm_set_ss(number);
+    
+    // 2. Compute the reciprocal square root using specialized hardware silicon.
+    // This gives a highly accurate initial approximation instantly.
+    reg = _mm_rsqrt_ss(reg);
+    
+    float y;
+    _mm_store_ss(&y, reg);
+    
+    // 3. One iteration of Newton-Raphson refinement to match the precision 
+    // of the original Quake III implementation perfectly.
+    return y * (1.5f - (number * 0.5f * y * y));
+#else
+    // Original legendary scalar bit-hack for QVM compilation compatibility
+    floatint_t t;
+    float x2, y;
+    const float threehalfs = 1.5F;
 
-	x2 = number * 0.5F;
-	t.f  = number;
-	t.i  = 0x5f3759df - ( t.i >> 1 );               // what the fuck?
-	y  = t.f;
-	y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
-//	y  = y * ( threehalfs - ( x2 * y * y ) );   // 2nd iteration, this can be removed
+    x2 = number * 0.5F;
+    t.f = number;
+    t.i = 0x5f3759df - (t.i >> 1); // what the fuck?
+    y = t.f;
+    y = y * (threehalfs - (x2 * y * y));
 
-	return y;
+    return y;
+#endif
 }
 
 float Q_fabs( float f ) {
@@ -788,88 +873,167 @@ void AddPointToBounds( const vec3_t v, vec3_t mins, vec3_t maxs ) {
 }
 
 qboolean BoundsIntersect(const vec3_t mins, const vec3_t maxs,
-		const vec3_t mins2, const vec3_t maxs2)
+                         const vec3_t mins2, const vec3_t maxs2)
 {
-	if ( maxs[0] < mins2[0] ||
-		maxs[1] < mins2[1] ||
-		maxs[2] < mins2[2] ||
-		mins[0] > maxs2[0] ||
-		mins[1] > maxs2[1] ||
-		mins[2] > maxs2[2])
-	{
-		return qfalse;
-	}
+#ifndef Q3_VM
+    // 1. Load the bounds into registers (padding 4th slot with 0)
+    __m128 v_mins  = _mm_set_ps(0.0f, mins[2],  mins[1],  mins[0]);
+    __m128 v_maxs  = _mm_set_ps(0.0f, maxs[2],  maxs[1],  maxs[0]);
+    __m128 v_mins2 = _mm_set_ps(0.0f, mins2[2], mins2[1], mins2[0]);
+    __m128 v_maxs2 = _mm_set_ps(0.0f, maxs2[2], maxs2[1], maxs2[0]);
 
-	return qtrue;
+    // 2. Perform simultaneous comparisons across X, Y, and Z axes
+    // cmplt: returns 0xFFFFFFFF if true, 0x0 if false per component
+    __m128 cmp1 = _mm_cmplt_ps(v_maxs, v_mins2);  // Is maxs < mins2?
+    __m128 cmp2 = _mm_cmpgt_ps(v_mins, v_maxs2);  // Is mins > maxs2?
+
+    // 3. Combine the comparison results using a bitwise OR
+    __m128 combined = _mm_or_ps(cmp1, cmp2);
+
+    // 4. Movemask extracts the most significant bit of each float slot 
+    // into a standard integer (slots 0, 1, 2 correspond to bits 0, 1, 2)
+    int mask = _mm_movemask_ps(combined);
+
+    // 5. If any of the lower 3 bits (value 1, 2, or 4) are set, an exclusion condition met.
+    // Masking with 7 (binary 0111) checks axes X, Y, and Z simultaneously.
+    if (mask & 7)
+    {
+        return qfalse; 
+    }
+
+    return qtrue;
+#else
+    // Original scalar fallback for QVM
+    if (maxs[0] < mins2[0] || maxs[1] < mins2[1] || maxs[2] < mins2[2] ||
+        mins[0] > maxs2[0] || mins[1] > maxs2[1] || mins[2] > maxs2[2])
+    {
+        return qfalse;
+    }
+    return qtrue;
+#endif
 }
 
 qboolean BoundsIntersectSphere(const vec3_t mins, const vec3_t maxs,
-		const vec3_t origin, vec_t radius)
+                               const vec3_t origin, vec_t radius)
 {
-	if ( origin[0] - radius > maxs[0] ||
-		origin[0] + radius < mins[0] ||
-		origin[1] - radius > maxs[1] ||
-		origin[1] + radius < mins[1] ||
-		origin[2] - radius > maxs[2] ||
-		origin[2] + radius < mins[2])
-	{
-		return qfalse;
-	}
+#ifndef Q3_VM
+    // 1. Load bounds and origin (padding 4th slot with 0)
+    __m128 v_mins   = _mm_set_ps(0.0f, mins[2],   mins[1],   mins[0]);
+    __m128 v_maxs   = _mm_set_ps(0.0f, maxs[2],   maxs[1],   maxs[0]);
+    __m128 v_origin = _mm_set_ps(0.0f, origin[2], origin[1], origin[0]);
+    
+    // 2. Broadcast the radius across all slots
+    __m128 v_radius = _mm_set1_ps(radius);
 
-	return qtrue;
+    // 3. Expand the sphere origin out into a min/max bounding box
+    __m128 sphere_mins = _mm_sub_ps(v_origin, v_radius);
+    __m128 sphere_maxs = _mm_add_ps(v_origin, v_radius);
+
+    // 4. Simultaneous check: Is sphere completely outside the AABB?
+    __m128 cmp1 = _mm_cmpgt_ps(sphere_mins, v_maxs); // origin - radius > maxs
+    __m128 cmp2 = _mm_cmplt_ps(sphere_maxs, v_mins); // origin + radius < mins
+
+    // 5. Extract bitmask of the results
+    int mask = _mm_movemask_ps(_mm_or_ps(cmp1, cmp2));
+
+    // If any X, Y, or Z bits (lower 3 bits) are set, there is no intersection
+    if (mask & 7)
+    {
+        return qfalse;
+    }
+
+    return qtrue;
+#else
+    if (origin[0] - radius > maxs[0] ||
+        origin[0] + radius < mins[0] ||
+        origin[1] - radius > maxs[1] ||
+        origin[1] + radius < mins[1] ||
+        origin[2] - radius > maxs[2] ||
+        origin[2] + radius < mins[2])
+    {
+        return qfalse;
+    }
+    return qtrue;
+#endif
 }
 
 qboolean BoundsIntersectPoint(const vec3_t mins, const vec3_t maxs,
-		const vec3_t origin)
+                              const vec3_t origin)
 {
-	if ( origin[0] > maxs[0] ||
-		origin[0] < mins[0] ||
-		origin[1] > maxs[1] ||
-		origin[1] < mins[1] ||
-		origin[2] > maxs[2] ||
-		origin[2] < mins[2])
-	{
-		return qfalse;
-	}
+#ifndef Q3_VM
+    __m128 v_mins   = _mm_set_ps(0.0f, mins[2],   mins[1],   mins[0]);
+    __m128 v_maxs   = _mm_set_ps(0.0f, maxs[2],   maxs[1],   maxs[0]);
+    __m128 v_origin = _mm_set_ps(0.0f, origin[2], origin[1], origin[0]);
 
-	return qtrue;
+    // Check if the origin point escapes the bounds on any axis
+    __m128 cmp1 = _mm_cmpgt_ps(v_origin, v_maxs); // origin > maxs
+    __m128 cmp2 = _mm_cmplt_ps(v_origin, v_mins); // origin < mins
+
+    int mask = _mm_movemask_ps(_mm_or_ps(cmp1, cmp2));
+
+    if (mask & 7)
+    {
+        return qfalse;
+    }
+
+    return qtrue;
+#else
+    if (origin[0] > maxs[0] ||
+        origin[0] < mins[0] ||
+        origin[1] > maxs[1] ||
+        origin[1] < mins[1] ||
+        origin[2] > maxs[2] ||
+        origin[2] < mins[2])
+    {
+        return qfalse;
+    }
+    return qtrue;
+#endif
 }
 
-vec_t VectorNormalize( vec3_t v ) {
-#if Q_HAS_SIMD
-	__m128 x = _mm_loadu_ps(v);
-	__m128 mul = _mm_mul_ps(x, x);
-	__m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-	__m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-	__m128 sum = _mm_add_ss(mul, _mm_add_ss(shuf1, shuf2));
-	float length;
-	_mm_store_ss(&length, sum);
-	if (length > 0.0f) {
-		__m128 sqrt_len = _mm_sqrt_ss(sum);
-		_mm_store_ss(&length, sqrt_len);
-		__m128 len_v = _mm_shuffle_ps(sqrt_len, sqrt_len, _MM_SHUFFLE(0, 0, 0, 0));
-		__m128 norm = _mm_div_ps(x, len_v);
-		_mm_store_ss(&v[0], norm);
-		_mm_store_ss(&v[1], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(1, 1, 1, 1)));
-		_mm_store_ss(&v[2], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(2, 2, 2, 2)));
-	}
-	return length;
+vec_t VectorNormalize(vec3_t v)
+{
+#ifndef Q3_VM
+    // 1. Load the 3 floats (safely padding the 4th element with 0.0f)
+    __m128 x = _mm_set_ps(0.0f, v[2], v[1], v[0]);
+
+    // 2. Compute dot product of the vector with itself (X^2 + Y^2 + Z^2)
+    // 0x77 mask: Multiply slots 0,1,2 and broadcast the sum to ALL slots of 'sum'
+    __m128 sum = _mm_dp_ps(x, x, 0x77);
+
+    float length;
+    _mm_store_ss(&length, sum);
+
+    if (length > 0.0f) 
+    {
+        // 3. Take the square root of the sum
+        __m128 sqrt_len = _mm_sqrt_ps(sum);
+        
+        // Extract the actual float length to return later
+        _mm_store_ss(&length, sqrt_len);
+
+        // 4. Divide the original vector components by the calculated length
+        __m128 norm = _mm_div_ps(x, sqrt_len);
+
+        // 5. Store back to memory
+        _mm_store_ss(&v[0], norm);
+        _mm_store_ss(&v[1], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(1, 1, 1, 1)));
+        _mm_store_ss(&v[2], _mm_shuffle_ps(norm, norm, _MM_SHUFFLE(2, 2, 2, 2)));
+    }
+    return length;
 #else
-	float length, ilength;
-
-	length = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-
-	if ( length ) {
-		/* writing it this way allows gcc to recognize that rsqrt can be used */
-		ilength = 1/(float)sqrt (length);
-		/* sqrt(length) = length * (1 / sqrt(length)) */
-		length *= ilength;
-		v[0] *= ilength;
-		v[1] *= ilength;
-		v[2] *= ilength;
-	}
-
-	return length;
+    // Original scalar fallback for QVM compiler
+    float length, ilength;
+    length = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    if (length)
+    {
+        ilength = 1 / (float)sqrt(length);
+        length *= ilength;
+        v[0] *= ilength;
+        v[1] *= ilength;
+        v[2] *= ilength;
+    }
+    return length;
 #endif
 }
 
@@ -894,10 +1058,28 @@ vec_t VectorNormalize2( const vec3_t v, vec3_t out ) {
 
 }
 
-void _VectorMA( const vec3_t veca, float scale, const vec3_t vecb, vec3_t vecc ) {
-	vecc[0] = veca[0] + scale * vecb[0];
-	vecc[1] = veca[1] + scale * vecb[1];
-	vecc[2] = veca[2] + scale * vecb[2];
+void _VectorMA(const vec3_t veca, float scale, const vec3_t vecb, vec3_t vecc)
+{
+#ifndef Q3_VM
+    // 1. Load veca and vecb (padding 4th element with 0.0f)
+    __m128 a = _mm_set_ps(0.0f, veca[2], veca[1], veca[0]);
+    __m128 b = _mm_set_ps(0.0f, vecb[2], vecb[1], vecb[0]);
+    
+    // 2. Broadcast the single scalar scale float across all 4 slots
+    __m128 s = _mm_set1_ps(scale);
+    
+    // 3. Fused Multiply-Add: (b * s) + a
+    __m128 res = _mm_fmadd_ps(b, s, a);
+    
+    // 4. Stream back to the vecc destination array safely
+    _mm_store_ss(&vecc[0], res);
+    _mm_store_ss(&vecc[1], _mm_shuffle_ps(res, res, _MM_SHUFFLE(1, 1, 1, 1)));
+    _mm_store_ss(&vecc[2], _mm_shuffle_ps(res, res, _MM_SHUFFLE(2, 2, 2, 2)));
+#else
+    vecc[0] = veca[0] + scale * vecb[0];
+    vecc[1] = veca[1] + scale * vecb[1];
+    vecc[2] = veca[2] + scale * vecb[2];
+#endif
 }
 
 
@@ -905,16 +1087,40 @@ vec_t _DotProduct( const vec3_t v1, const vec3_t v2 ) {
 	return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
 }
 
-void _VectorSubtract( const vec3_t veca, const vec3_t vecb, vec3_t out ) {
-	out[0] = veca[0] - vecb[0];
-	out[1] = veca[1] - vecb[1];
-	out[2] = veca[2] - vecb[2];
+void _VectorSubtract(const vec3_t veca, const vec3_t vecb, vec3_t out)
+{
+#ifndef Q3_VM
+    __m128 a = _mm_set_ps(0.0f, veca[2], veca[1], veca[0]);
+    __m128 b = _mm_set_ps(0.0f, vecb[2], vecb[1], vecb[0]);
+    
+    __m128 res = _mm_sub_ps(a, b);
+    
+    _mm_store_ss(&out[0], res);
+    _mm_store_ss(&out[1], _mm_shuffle_ps(res, res, _MM_SHUFFLE(1, 1, 1, 1)));
+    _mm_store_ss(&out[2], _mm_shuffle_ps(res, res, _MM_SHUFFLE(2, 2, 2, 2)));
+#else
+    out[0] = veca[0] - vecb[0];
+    out[1] = veca[1] - vecb[1];
+    out[2] = veca[2] - vecb[2];
+#endif
 }
 
-void _VectorAdd( const vec3_t veca, const vec3_t vecb, vec3_t out ) {
-	out[0] = veca[0] + vecb[0];
-	out[1] = veca[1] + vecb[1];
-	out[2] = veca[2] + vecb[2];
+void _VectorAdd(const vec3_t veca, const vec3_t vecb, vec3_t out)
+{
+#ifndef Q3_VM
+    __m128 a = _mm_set_ps(0.0f, veca[2], veca[1], veca[0]);
+    __m128 b = _mm_set_ps(0.0f, vecb[2], vecb[1], vecb[0]);
+    
+    __m128 res = _mm_add_ps(a, b);
+    
+    _mm_store_ss(&out[0], res);
+    _mm_store_ss(&out[1], _mm_shuffle_ps(res, res, _MM_SHUFFLE(1, 1, 1, 1)));
+    _mm_store_ss(&out[2], _mm_shuffle_ps(res, res, _MM_SHUFFLE(2, 2, 2, 2)));
+#else
+    out[0] = veca[0] + vecb[0];
+    out[1] = veca[1] + vecb[1];
+    out[2] = veca[2] + vecb[2];
+#endif
 }
 
 void _VectorCopy( const vec3_t in, vec3_t out ) {
