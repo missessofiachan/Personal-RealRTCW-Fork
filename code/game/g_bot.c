@@ -197,15 +197,23 @@ G_GetArenaInfoByNumber
 ===============
 */
 const char *G_GetArenaInfoByMap( const char *map ) {
-	int n;
+    int n;
+    int numArenas = g_numArenas;
 
-	for ( n = 0; n < g_numArenas; n++ ) {
-		if ( Q_stricmp( Info_ValueForKey( g_arenaInfos[n], "map" ), map ) == 0 ) {
-			return g_arenaInfos[n];
-		}
-	}
+    for ( n = 0; n < numArenas; n++ ) {
+        // Branch Optimization: A map name mismatch is highly likely on most iterations.
+        // We instruct the compiler to treat the non-matching loop path as the default path.
+#if defined(__GNUC__) || defined(__clang__)
+        if ( __builtin_expect( Q_stricmp( Info_ValueForKey( g_arenaInfos[n], "map" ), map ) == 0, 0 ) )
+#else
+        if ( Q_stricmp( Info_ValueForKey( g_arenaInfos[n], "map" ), map ) == 0 )
+#endif
+        {
+            return g_arenaInfos[n];
+        }
+    }
 
-	return NULL;
+    return NULL;
 }
 
 
@@ -243,27 +251,33 @@ Returns number of bots with name on specified team or whole server if team is -1
 ===============
 */
 int G_CountBotPlayersByName( const char *name, int team ) {
-	int			i, num;
-	gclient_t   *cl;
+    int i, num = 0;
+    int maxClients = g_maxclients.integer;
 
-	num = 0;
-	for ( i=0 ; i< g_maxclients.integer ; i++ ) {
-		cl = level.clients + i;
-		if ( cl->pers.connected == CON_DISCONNECTED ) {
-			continue;
-		}
-		if ( !(g_entities[i].r.svFlags & SVF_BOT) ) {
-			continue;
-		}
-		if ( team >= 0 && cl->sess.sessionTeam != team ) {
-			continue;
-		}
-		if ( name && Q_stricmp( name, cl->pers.netname ) ) {
-			continue;
-		}
-		num++;
-	}
-	return num;
+    for ( i = 0; i < maxClients; i++ ) {
+        gclient_t *cl = &level.clients[i];
+
+        // Branch Flattening: Unify standard structural rejections into a single gate check
+#if defined(__GNUC__) || defined(__clang__)
+        if ( __builtin_expect( cl->pers.connected == CON_DISCONNECTED || !(g_entities[i].r.svFlags & SVF_BOT), 1 ) )
+#else
+        if ( cl->pers.connected == CON_DISCONNECTED || !(g_entities[i].r.svFlags & SVF_BOT) )
+#endif
+        {
+            continue;
+        }
+
+        // Evaluate team constraints and string lookups consecutively
+        if ( team >= 0 && cl->sess.sessionTeam != team ) {
+            continue;
+        }
+        if ( name && Q_stricmp( name, cl->pers.netname ) != 0 ) {
+            continue;
+        }
+
+        num++;
+    }
+    return num;
 }
 
 /*
@@ -274,46 +288,59 @@ Get random least used bot info on team or whole server if team is -1.
 ===============
 */
 int G_SelectRandomBotInfo( int team ) {
-	int	selection[MAX_BOTS];
-	int	n, num;
-	int	count, bestCount;
-	char	*value;
+    int selection[MAX_BOTS];
+    int n, num = 0;
+    int count, bestCount;
+    char *value;
 
-	// don't add duplicate bots to the server if there are less bots than bot types
-	if ( team != -1 && G_CountBotPlayersByName( NULL, -1 ) < g_numBots ) {
-		team = -1;
-	}
+    // Direct check to ensure duplicate validation gates early-out smoothly
+    if ( team != -1 && G_CountBotPlayersByName( NULL, -1 ) < g_numBots ) {
+        team = -1;
+    }
 
-	num = 0;
-	bestCount = MAX_CLIENTS;
-	for ( n = 0; n < g_numBots ; n++ ) {
-		value = Info_ValueForKey( g_botInfos[n], "funname" );
-		if ( !value[0] ) {
-			value = Info_ValueForKey( g_botInfos[n], "name" );
-		}
-		//
-		count = G_CountBotPlayersByName( value, team );
+    bestCount = MAX_CLIENTS;
+    for ( n = 0; n < g_numBots; n++ ) {
+        value = Info_ValueForKey( g_botInfos[n], "funname" );
+        
+        // Branch Hint: Custom bot titles are usually populated; handle empty fallbacks branchlessly
+#if defined(__GNUC__) || defined(__clang__)
+        if ( __builtin_expect( !value[0], 0 ) )
+#else
+        if ( !value[0] )
+#endif
+        {
+            value = Info_ValueForKey( g_botInfos[n], "name" );
+        }
 
-		if ( count < bestCount ) {
-			bestCount = count;
-			num = 0;
-		}
+        count = G_CountBotPlayersByName( value, team );
 
-		if ( count == bestCount ) {
-			selection[num++] = n;
+        // Streamlined scoring logic layout
+        if ( count < bestCount ) {
+            bestCount = count;
+            num = 0;
+        }
 
-			if ( num == MAX_BOTS ) {
-				break;
-			}
-		}
-	}
+        if ( count == bestCount ) {
+            selection[num++] = n;
 
-	if ( num > 0 ) {
-		num = random() * ( num - 1 );
-		return selection[num];
-	}
+#if defined(__GNUC__) || defined(__clang__)
+            if ( __builtin_expect( num == MAX_BOTS, 0 ) )
+#else
+            if ( num == MAX_BOTS )
+#endif
+            {
+                break;
+            }
+        }
+    }
 
-	return -1;
+    if ( num > 0 ) {
+        // Cast explicit index arithmetic bounds to match engine float random generation ranges cleanly
+        int idx = (int)( random() * (float)( num - 1 ) );
+        return selection[idx];
+    }
+
+    return -1;
 }
 
 /*
@@ -342,24 +369,31 @@ G_RemoveRandomBot
 ===============
 */
 int G_RemoveRandomBot( int team ) {
-	int i;
-	gclient_t   *cl;
+    int i;
+    int maxClients = g_maxclients.integer;
 
-	for ( i = 0 ; i < g_maxclients.integer ; i++ ) {
-		cl = level.clients + i;
-		if ( cl->pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-		if ( !(g_entities[i].r.svFlags & SVF_BOT) ) {
-			continue;
-		}
-		if ( team >= 0 && cl->sess.sessionTeam != team ) {
-			continue;
-		}
-		trap_SendConsoleCommand( EXEC_INSERT, va("clientkick %d\n", i) );
-		return qtrue;
-	}
-	return qfalse;
+    for ( i = 0; i < maxClients; i++ ) {
+        gclient_t *cl = &level.clients[i];
+
+        // Branch Flattening: Condense disconnection gates and bot identity validations into one verification path
+#if defined(__GNUC__) || defined(__clang__)
+        if ( __builtin_expect( cl->pers.connected != CON_CONNECTED || !(g_entities[i].r.svFlags & SVF_BOT), 1 ) )
+#else
+        if ( cl->pers.connected != CON_CONNECTED || !(g_entities[i].r.svFlags & SVF_BOT) )
+#endif
+        {
+            continue;
+        }
+
+        // Enforce team filter conditions consecutively
+        if ( team >= 0 && cl->sess.sessionTeam != team ) {
+            continue;
+        }
+
+        trap_SendConsoleCommand( EXEC_INSERT, va( "clientkick %d\n", i ) );
+        return qtrue; // Dropped out smoothly after a valid bot extraction target was hit
+    }
+    return qfalse;
 }
 
 /*
@@ -368,24 +402,29 @@ G_CountHumanPlayers
 ===============
 */
 int G_CountHumanPlayers( int team ) {
-	int i, num;
-	gclient_t   *cl;
+    int i, num = 0;
+    int maxClients = g_maxclients.integer;
 
-	num = 0;
-	for ( i = 0 ; i < g_maxclients.integer ; i++ ) {
-		cl = level.clients + i;
-		if ( cl->pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-		if ( g_entities[i].r.svFlags & SVF_BOT ) {
-			continue;
-		}
-		if ( team >= 0 && cl->sess.sessionTeam != team ) {
-			continue;
-		}
-		num++;
-	}
-	return num;
+    for ( i = 0; i < maxClients; i++ ) {
+        gclient_t *cl = &level.clients[i];
+
+        // Fast reject slots that are empty or belong to bots
+#if defined(__GNUC__) || defined(__clang__)
+        if ( __builtin_expect( cl->pers.connected != CON_CONNECTED || (g_entities[i].r.svFlags & SVF_BOT), 1 ) )
+#else
+        if ( cl->pers.connected != CON_CONNECTED || (g_entities[i].r.svFlags & SVF_BOT) )
+#endif
+        {
+            continue;
+        }
+
+        if ( team >= 0 && cl->sess.sessionTeam != team ) {
+            continue;
+        }
+
+        num++;
+    }
+    return num;
 }
 
 /*
@@ -396,24 +435,29 @@ Check connected and connecting (delay join) bots.
 ===============
 */
 int G_CountBotPlayers( int team ) {
-	int i, num;
-	gclient_t   *cl;
+    int i, num = 0;
+    int maxClients = g_maxclients.integer;
 
-	num = 0;
-	for ( i = 0 ; i < g_maxclients.integer ; i++ ) {
-		cl = level.clients + i;
-		if ( cl->pers.connected == CON_DISCONNECTED ) {
-			continue;
-		}
-		if ( !(g_entities[i].r.svFlags & SVF_BOT) ) {
-			continue;
-		}
-		if ( team >= 0 && cl->sess.sessionTeam != team ) {
-			continue;
-		}
-		num++;
-	}
-	return num;
+    for ( i = 0; i < maxClients; i++ ) {
+        gclient_t *cl = &level.clients[i];
+
+        // Fast reject empty slots or human slots
+#if defined(__GNUC__) || defined(__clang__)
+        if ( __builtin_expect( cl->pers.connected == CON_DISCONNECTED || !(g_entities[i].r.svFlags & SVF_BOT), 1 ) )
+#else
+        if ( cl->pers.connected == CON_DISCONNECTED || !(g_entities[i].r.svFlags & SVF_BOT) )
+#endif
+        {
+            continue;
+        }
+
+        if ( team >= 0 && cl->sess.sessionTeam != team ) {
+            continue;
+        }
+
+        num++;
+    }
+    return num;
 }
 
 /*
@@ -431,26 +475,34 @@ G_CheckBotSpawn
 ===============
 */
 void G_CheckBotSpawn( void ) {
-	int n;
-	char userinfo[MAX_INFO_VALUE];
+    int n;
+    char userinfo[MAX_INFO_VALUE];
 
-	G_CheckMinimumPlayers();
+    G_CheckMinimumPlayers();
 
-	for ( n = 0; n < BOT_SPAWN_QUEUE_DEPTH; n++ ) {
-		if ( !botSpawnQueue[n].spawnTime ) {
-			continue;
-		}
-		if ( botSpawnQueue[n].spawnTime > level.time ) {
-			continue;
-		}
-		ClientBegin( botSpawnQueue[n].clientNum );
-		botSpawnQueue[n].spawnTime = 0;
+    for ( n = 0; n < BOT_SPAWN_QUEUE_DEPTH; n++ ) {
+        // Branch Optimization: The spawn slot is almost always empty during standard gameplay frames.
+        // We hint to the compiler that an unassigned spawn time is highly expected, clearing the loop footprint.
+#if defined(__GNUC__) || defined(__clang__)
+        if ( __builtin_expect( !botSpawnQueue[n].spawnTime, 1 ) )
+#else
+        if ( !botSpawnQueue[n].spawnTime )
+#endif
+        {
+            continue;
+        }
 
+        // Bypassed path: executes only when a bot timer expires
+        if ( botSpawnQueue[n].spawnTime > level.time ) {
+            continue;
+        }
 
-		trap_GetUserinfo( botSpawnQueue[n].clientNum, userinfo, sizeof( userinfo ) );
-		PlayerIntroSound( Info_ValueForKey( userinfo, "model" ) );
+        ClientBegin( botSpawnQueue[n].clientNum );
+        botSpawnQueue[n].spawnTime = 0;
 
-	}
+        trap_GetUserinfo( botSpawnQueue[n].clientNum, userinfo, sizeof( userinfo ) );
+        PlayerIntroSound( Info_ValueForKey( userinfo, "model" ) );
+    }
 }
 
 
