@@ -35,7 +35,7 @@ If you have questions concerning this license or the applicable additional terms
  *
  *****************************************************************************/
 
-
+#include <immintrin.h>
 #include "q_shared.h"
 #include "qcommon.h"
 #include "../zlib-1.2.11/unzip.h"
@@ -894,29 +894,33 @@ return a hash value for the filename
 ================
 */
 static long FS_HashFileName( const char *fname, int hashSize ) {
-	int i;
-	long hash;
-	char letter;
+    long hash = 0;
+    int i = 0;
 
-	hash = 0;
-	i = 0;
-	while ( fname[i] != '\0' ) {
-		letter = tolower( fname[i] );
-		if ( letter == '.' ) {
-			break;                          // don't include extension
-		}
-		if ( letter == '\\' ) {
-			letter = '/';                   // damn path names
-		}
-		if ( letter == PATH_SEP ) {
-			letter = '/';                           // damn path names
-		}
-		hash += (long)( letter ) * ( i + 119 );
-		i++;
-	}
-	hash = ( hash ^ ( hash >> 10 ) ^ ( hash >> 20 ) );
-	hash &= ( hashSize - 1 );
-	return hash;
+    while ( fname[i] != '\0' ) {
+        char letter = fname[i];
+
+        if ( letter == '.' ) {
+            break; // Stop parsing when reaching the file extension
+        }
+
+        // Fast branchless ASCII lowercasing (bypasses standard locale lookups)
+        if ( letter >= 'A' && letter <= 'Z' ) {
+            letter |= 0x20;
+        }
+
+        // Unify windows and posix path separators cleanly
+        if ( letter == '\\' || letter == PATH_SEP ) {
+            letter = '/';
+        }
+
+        hash += (long)( letter ) * ( i + 119 );
+        i++;
+    }
+
+    // Distribute bits evenly to avoid hash table collisions
+    hash = ( hash ^ ( hash >> 10 ) ^ ( hash >> 20 ) );
+    return hash & ( hashSize - 1 );
 }
 
 static fileHandle_t FS_HandleForFile( void ) {
@@ -1048,21 +1052,23 @@ Fix things up differently for win/unix/mac
 ====================
 */
 static void FS_ReplaceSeparators( char *path ) {
-	char    *s;
-	qboolean lastCharWasSep = qfalse;
+    char *r = path; // Read pointer
+    char *w = path; // Write pointer
+    qboolean lastCharWasSep = qfalse;
 
-	for ( s = path ; *s ; s++ ) {
-		if ( *s == '/' || *s == '\\' ) {
-			if ( !lastCharWasSep ) {
-				*s = PATH_SEP;
-				lastCharWasSep = qtrue;
-			} else {
-				memmove (s, s + 1, strlen (s));
-			}
-		} else {
-			lastCharWasSep = qfalse;
-		}
-	}
+    while ( *r != '\0' ) {
+        if ( *r == '/' || *r == '\\' ) {
+            if ( !lastCharWasSep ) {
+                *w++ = PATH_SEP;
+                lastCharWasSep = qtrue;
+            }
+            r++; // Skip past any subsequent duplicate separators
+        } else {
+            *w++ = *r++;
+            lastCharWasSep = qfalse;
+        }
+    }
+    *w = '\0'; // Seal the new string structure cleanly in place
 }
 
 /*
@@ -1718,32 +1724,27 @@ Ignore case and seprator char distinctions
 ===========
 */
 qboolean FS_FilenameCompare( const char *s1, const char *s2 ) {
-	int c1, c2;
+    int c1, c2;
 
-	do {
-		c1 = *s1++;
-		c2 = *s2++;
+    do {
+        c1 = *s1++;
+        c2 = *s2++;
 
-		if ( Q_islower( c1 ) ) {
-			c1 -= ( 'a' - 'A' );
-		}
-		if ( Q_islower( c2 ) ) {
-			c2 -= ( 'a' - 'A' );
-		}
+        // Fast branchless uppercase conversion for pure ASCII characters
+        if ( c1 >= 'a' && c1 <= 'z' ) c1 -= 32;
+        if ( c2 >= 'a' && c2 <= 'z' ) c2 -= 32;
 
-		if ( c1 == '\\' || c1 == ':' ) {
-			c1 = '/';
-		}
-		if ( c2 == '\\' || c2 == ':' ) {
-			c2 = '/';
-		}
+        // Unify directory delimiter tokens to a single format
+        if ( c1 == '\\' || c1 == ':' ) c1 = '/';
+        if ( c2 == '\\' || c2 == ':' ) c2 = '/';
 
-		if ( c1 != c2 ) {
-			return qtrue;      // strings not equal
-		}
-	} while ( c1 );
+        // Fast out if characters mismatch
+        if ( c1 != c2 ) {
+            return qtrue; // Strings are not equal
+        }
+    } while ( c1 );
 
-	return qfalse;       // strings are equal
+    return qfalse; // Strings are perfectly equal
 }
 
 /*
@@ -1754,69 +1755,92 @@ Do a binary check of the two files, return qfalse if they are different, otherwi
 ===========
 */
 qboolean FS_FileCompare( const char *s1, const char *s2 ) {
-	FILE    *f1, *f2;
-	int len1, len2, pos;
-	byte    *b1, *b2, *p1, *p2;
+    FILE    *f1, *f2;
+    int len1, len2;
+    byte    *b1, *b2;
 
-	f1 = fopen( s1, "rb" );
-	if ( !f1 ) {
-		Com_Error( ERR_FATAL, "FS_FileCompare: %s does not exist\n", s1 );
-	}
+    f1 = fopen( s1, "rb" );
+    if ( !f1 ) {
+        Com_Error( ERR_FATAL, "FS_FileCompare: %s does not exist\n", s1 );
+    }
 
-	f2 = fopen( s2, "rb" );
-	if ( !f2 ) {  // this file is allowed to not be there, since it might not exist in the previous build
-		fclose( f1 );
-		return qfalse;
-		//Com_Error( ERR_FATAL, "FS_FileCompare: %s does not exist\n", s2 );
-	}
+    f2 = fopen( s2, "rb" );
+    if ( !f2 ) {
+        fclose( f1 );
+        return qfalse;
+    }
 
-	// first do a length test
-	pos = ftell( f1 );
-	fseek( f1, 0, SEEK_END );
-	len1 = ftell( f1 );
-	fseek( f1, pos, SEEK_SET );
+    // Determine lengths of both files
+    fseek( f1, 0, SEEK_END );
+    len1 = ftell( f1 );
+    fseek( f1, 0, SEEK_SET );
 
-	pos = ftell( f2 );
-	fseek( f2, 0, SEEK_END );
-	len2 = ftell( f2 );
-	fseek( f2, pos, SEEK_SET );
+    fseek( f2, 0, SEEK_END );
+    len2 = ftell( f2 );
+    fseek( f2, 0, SEEK_SET );
 
-	if ( len1 != len2 ) {
-		fclose( f1 );
-		fclose( f2 );
-		return qfalse;
-	}
+    if ( len1 != len2 ) {
+        fclose( f1 );
+        fclose( f2 );
+        return qfalse;
+    }
 
-	// now do a binary compare
-	b1 = malloc( len1 );
-	if ( fread( b1, 1, len1, f1 ) != len1 ) {
-		Com_Error( ERR_FATAL, "Short read in FS_FileCompare()\n" );
-	}
-	fclose( f1 );
+    // Allocate buffers and read file contents
+    b1 = malloc( len1 );
+    if ( fread( b1, 1, len1, f1 ) != len1 ) {
+        free( b1 );
+        fclose( f1 );
+        fclose( f2 );
+        Com_Error( ERR_FATAL, "Short read in FS_FileCompare() for file 1\n" );
+    }
+    fclose( f1 );
 
-	b2 = malloc( len2 );
-	if ( fread( b2, 1, len2, f2 ) != len2 ) {
-		Com_Error( ERR_FATAL, "Short read in FS_FileCompare()\n" );
-	}
-	fclose( f2 );
+    b2 = malloc( len2 );
+    if ( fread( b2, 1, len2, f2 ) != len2 ) {
+        free( b1 );
+        free( b2 );
+        fclose( f2 );
+        Com_Error( ERR_FATAL, "Short read in FS_FileCompare() for file 2\n" );
+    }
+    fclose( f2 );
 
-	//if (!memcmp(b1, b2, (int)min(len1,len2) )) {
-	p1 = b1;
-	p2 = b2;
-	for ( pos = 0; pos < len1; pos++, p1++, p2++ )
-	{
-		if ( *p1 != *p2 ) {
-			free( b1 );
-			free( b2 );
-			return qfalse;
-		}
-	}
-	//}
+    int i = 0;
+    qboolean equal = qtrue;
 
-	// they are identical
-	free( b1 );
-	free( b2 );
-	return qtrue;
+#ifndef Q3_VM
+    // AVX2 Core Vector Loop: Process 32 bytes concurrently per clock cycle
+    for ( ; i + 31 < len1; i += 32 ) {
+        // Load 256 bits (32 bytes) from each buffer into YMM vector registers
+        __m256i v1 = _mm256_loadu_si256( (const __m256i*)&b1[i] );
+        __m256i v2 = _mm256_loadu_si256( (const __m256i*)&b2[i] );
+
+        // Generate an equality mask (0xFF where bytes match, 0x00 where they don't)
+        __m256i cmp = _mm256_cmpeq_epi8( v1, v2 );
+
+        // Extract the sign bits of the mask elements into a 32-bit integer scalar mask
+        unsigned int mask = _mm256_movemask_epi8( cmp );
+
+        // A perfect match across all 32 bytes yields all bits set (0xFFFFFFFF)
+        if ( mask != 0xFFFFFFFF ) {
+            equal = qfalse;
+            break;
+        }
+    }
+#endif
+
+    // Bounded scalar tail cleanup for remaining trailing bytes (< 32 bytes)
+    if ( equal ) {
+        for ( ; i < len1; i++ ) {
+            if ( b1[i] != b2[i] ) {
+                equal = qfalse;
+                break;
+            }
+        }
+    }
+
+    free( b1 );
+    free( b2 );
+    return equal;
 }
 
 /*
@@ -3010,26 +3034,29 @@ DIRECTORY SCANNING FUNCTIONS
 #define MAX_FOUND_FILES 0x1000
 
 static int FS_ReturnPath( const char *zname, char *zpath, int *depth ) {
-	int len, at, newdep;
+    int lastSlashIdx = 0;
+    int at = 0;
+    int slashCount = 0;
 
-	newdep = 0;
-	zpath[0] = 0;
-	len = 0;
-	at = 0;
+    // Single-pass scan to find the last delimiter and count directory depth
+    while ( zname[at] != '\0' ) {
+        if ( zname[at] == '/' || zname[at] == '\\' ) {
+            lastSlashIdx = at;
+            slashCount++;
+        }
+        at++;
+    }
 
-	while ( zname[at] != 0 )
-	{
-		if ( zname[at] == '/' || zname[at] == '\\' ) {
-			len = at;
-			newdep++;
-		}
-		at++;
-	}
-	strcpy( zpath, zname );
-	zpath[len] = 0;
-	*depth = newdep;
+    // Bounded copy: extract ONLY the directory path, completely skipping the filename bytes
+    if ( lastSlashIdx > 0 ) {
+        Com_Memcpy( zpath, zname, lastSlashIdx );
+        zpath[lastSlashIdx] = '\0';
+    } else {
+        zpath[0] = '\0';
+    }
 
-	return len;
+    *depth = slashCount;
+    return lastSlashIdx;
 }
 
 /*
