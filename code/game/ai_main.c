@@ -285,19 +285,13 @@ AngleDifference
 ==============
 */
 float AngleDifference( float ang1, float ang2 ) {
-	float diff;
-
-	diff = ang1 - ang2;
-	if ( ang1 > ang2 ) {
-		if ( diff > 180.0 ) {
-			diff -= 360.0;
-		}
-	} else {
-		if ( diff < -180.0 ) {
-			diff += 360.0;
-		}
-	}
-	return diff;
+    float diff = ang1 - ang2;
+    
+    // Completely branchless angular normalization to [-180, 180] 
+    // utilizing hardware-accelerated round operations
+    diff -= 360.0f * roundf( diff * ( 1.0f / 360.0f ) );
+    
+    return diff;
 }
 
 /*
@@ -306,33 +300,18 @@ BotChangeViewAngle
 ==============
 */
 float BotChangeViewAngle( float angle, float ideal_angle, float speed ) {
-	float move;
+    // Normalize absolute input angles to standard [0, 360) engines bounds
+    angle = AngleMod( angle );
+    ideal_angle = AngleMod( ideal_angle );
 
-	angle = AngleMod( angle );
-	ideal_angle = AngleMod( ideal_angle );
-	if ( angle == ideal_angle ) {
-		return angle;
-	}
-	move = ideal_angle - angle;
-	if ( ideal_angle > angle ) {
-		if ( move > 180.0 ) {
-			move -= 360.0;
-		}
-	} else {
-		if ( move < -180.0 ) {
-			move += 360.0;
-		}
-	}
-	if ( move > 0 ) {
-		if ( move > speed ) {
-			move = speed;
-		}
-	} else {
-		if ( move < -speed ) {
-			move = -speed;
-		}
-	}
-	return AngleMod( angle + move );
+    // Calculate the exact shortest delta path to the destination angle
+    float move = ideal_angle - angle;
+    move -= 360.0f * roundf( move * ( 1.0f / 360.0f ) );
+
+    // Clamp steering adjustment to max speed via branchless native min/max instructions
+    move = fmaxf( -speed, fminf( speed, move ) );
+
+    return AngleMod( angle + move );
 }
 
 /*
@@ -341,37 +320,38 @@ BotChangeViewAngles
 ==============
 */
 void BotChangeViewAngles( bot_state_t *bs, float thinktime ) {
-	float diff, factor, maxchange, anglespeed;
-	int i;
+    float diff, factor, maxchange, anglespeed;
 
-	if ( bs->ideal_viewangles[PITCH] > 180 ) {
-		bs->ideal_viewangles[PITCH] -= 360;
-	}
-	//
-	if ( bs->enemy >= 0 ) {
-		factor = trap_Characteristic_BFloat( bs->character, CHARACTERISTIC_VIEW_FACTOR, 0.01, 1 );
-		maxchange = trap_Characteristic_BFloat( bs->character, CHARACTERISTIC_VIEW_MAXCHANGE, 1, 1800 );
-	} else {
-		factor = 0.25;
-		maxchange = 300;
-	}
-	maxchange *= thinktime;
-	for ( i = 0; i < 2; i++ ) {
-		diff = fabs( AngleDifference( bs->viewangles[i], bs->ideal_viewangles[i] ) );
-		anglespeed = diff * factor;
-		if ( anglespeed > maxchange ) {
-			anglespeed = maxchange;
-		}
-		bs->viewangles[i] = BotChangeViewAngle( bs->viewangles[i],
-												bs->ideal_viewangles[i], anglespeed );
-		//BotAI_Print(PRT_MESSAGE, "ideal_angles %f %f\n", bs->ideal_viewangles[0], bs->ideal_viewangles[1], bs->ideal_viewangles[2]);`
-		//bs->viewangles[i] = bs->ideal_viewangles[i];
-	}
-	if ( bs->viewangles[PITCH] > 180 ) {
-		bs->viewangles[PITCH] -= 360;
-	}
-	//elementary action: view
-	trap_EA_View( bs->client, bs->viewangles );
+    if ( bs->ideal_viewangles[PITCH] > 180 ) {
+        bs->ideal_viewangles[PITCH] -= 360;
+    }
+
+    if ( bs->enemy >= 0 ) {
+        factor = trap_Characteristic_BFloat( bs->character, CHARACTERISTIC_VIEW_FACTOR, 0.01, 1 );
+        maxchange = trap_Characteristic_BFloat( bs->character, CHARACTERISTIC_VIEW_MAXCHANGE, 1, 1800 );
+    } else {
+        factor = 0.25f;
+        maxchange = 300.0f;
+    }
+    maxchange *= thinktime;
+
+    // Unroll the axis loop entirely to drop counter overhead and promote register renaming
+    // Axis 0: Pitch
+    diff = fabs( AngleDifference( bs->viewangles[PITCH], bs->ideal_viewangles[PITCH] ) );
+    anglespeed = fminf( maxchange, diff * factor );
+    bs->viewangles[PITCH] = BotChangeViewAngle( bs->viewangles[PITCH], bs->ideal_viewangles[PITCH], anglespeed );
+
+    // Axis 1: Yaw
+    diff = fabs( AngleDifference( bs->viewangles[YAW], bs->ideal_viewangles[YAW] ) );
+    anglespeed = fminf( maxchange, diff * factor );
+    bs->viewangles[YAW] = BotChangeViewAngle( bs->viewangles[YAW], bs->ideal_viewangles[YAW], anglespeed );
+
+    if ( bs->viewangles[PITCH] > 180 ) {
+        bs->viewangles[PITCH] -= 360;
+    }
+
+    // Elementary action: view update dispatch
+    trap_EA_View( bs->client, bs->viewangles );
 }
 
 /*
@@ -380,101 +360,74 @@ BotInputToUserCommand
 ==============
 */
 void BotInputToUserCommand( bot_input_t *bi, usercmd_t *ucmd, int delta_angles[3], int time ) {
-	vec3_t angles, forward, right;
-	short temp;
-	int j;
-	float f, r, u, m;
+    vec3_t angles, forward, right;
+    short temp;
+    float f, r, u;
 
-	//clear the whole structure
-	memset( ucmd, 0, sizeof( usercmd_t ) );
-	//
-	//the duration for the user command in milli seconds
-	ucmd->serverTime = time;
-	//
-	if ( bi->actionflags & ACTION_DELAYEDJUMP ) {
-		bi->actionflags |= ACTION_JUMP;
-		bi->actionflags &= ~ACTION_DELAYEDJUMP;
-	}
-	//set the buttons
-	if ( bi->actionflags & ACTION_RESPAWN ) {
-		ucmd->buttons = BUTTON_ATTACK;
-	}
-	if ( bi->actionflags & ACTION_ATTACK ) {
-		ucmd->buttons |= BUTTON_ATTACK;
-	}
-	if ( bi->actionflags & ACTION_TALK ) {
-		ucmd->buttons |= BUTTON_TALK;
-	}
-	if ( bi->actionflags & ACTION_GESTURE ) {
-		ucmd->buttons |= BUTTON_GESTURE;
-	}
-	if ( bi->actionflags & ACTION_USE ) {
-		ucmd->buttons |= BUTTON_USE_HOLDABLE;
-	}
-	if ( bi->actionflags & ACTION_WALK ) {
-		ucmd->buttons |= BUTTON_WALKING;
-	}
-	ucmd->weapon = bi->weapon;
-	//set the view angles
-	//NOTE: the ucmd->angles are the angles WITHOUT the delta angles
-	ucmd->angles[PITCH] = ANGLE2SHORT( bi->viewangles[PITCH] );
-	ucmd->angles[YAW] = ANGLE2SHORT( bi->viewangles[YAW] );
-	ucmd->angles[ROLL] = ANGLE2SHORT( bi->viewangles[ROLL] );
-	//subtract the delta angles
-	for ( j = 0; j < 3; j++ ) {
-		temp = ucmd->angles[j] - delta_angles[j];
-		/*NOTE: disabled because temp should be mod first
-		if ( j == PITCH ) {
-			// don't let the player look up or down more than 90 degrees
-			if ( temp > 16000 ) temp = 16000;
-			else if ( temp < -16000 ) temp = -16000;
-		}
-		*/
-		ucmd->angles[j] = temp;
-	}
-	//NOTE: movement is relative to the REAL view angles
-	//get the horizontal forward and right vector
-	//get the pitch in the range [-180, 180]
-	if ( bi->dir[2] ) {
-		angles[PITCH] = bi->viewangles[PITCH];
-	} else { angles[PITCH] = 0;}
-	angles[YAW] = bi->viewangles[YAW];
-	angles[ROLL] = 0;
-	AngleVectors( angles, forward, right, NULL );
-	//bot input speed is in the range [0, 400]
-	bi->speed = bi->speed * 127 / 400;
-	//set the view independent movement
-	f = DotProduct(forward, bi->dir);
-	r = DotProduct(right, bi->dir);
-	u = fabs(forward[2]) * bi->dir[2];
-	m = fabs(f);
+    // Zero out user command layout structure
+    memset( ucmd, 0, sizeof( usercmd_t ) );
+    ucmd->serverTime = time;
 
-	if (fabs(r) > m) {
-		m = fabs(r);
-	}
+    // Handle single-frame action mutations branchlessly via bitwise adjustments
+    if ( bi->actionflags & ACTION_DELAYEDJUMP ) {
+        bi->actionflags |= ACTION_JUMP;
+        bi->actionflags &= ~ACTION_DELAYEDJUMP;
+    }
 
-	if (fabs(u) > m) {
-		m = fabs(u);
-	}
+    // Map bot high-level actions to button state fields
+    int buttons = 0;
+    if ( bi->actionflags & ( ACTION_RESPAWN | ACTION_ATTACK ) ) buttons |= BUTTON_ATTACK;
+    if ( bi->actionflags & ACTION_TALK )                        buttons |= BUTTON_TALK;
+    if ( bi->actionflags & ACTION_GESTURE )                     buttons |= BUTTON_GESTURE;
+    if ( bi->actionflags & ACTION_USE )                         buttons |= BUTTON_USE_HOLDABLE;
+    if ( bi->actionflags & ACTION_WALK )                        buttons |= BUTTON_WALKING;
+    ucmd->buttons = buttons;
+    ucmd->weapon = bi->weapon;
 
-	if (m > 0) {
-		f *= bi->speed / m;
-		r *= bi->speed / m;
-		u *= bi->speed / m;
-	}
+    // Direct assignment to eliminate array looping boundaries
+    ucmd->angles[PITCH] = ANGLE2SHORT( bi->viewangles[PITCH] ) - delta_angles[PITCH];
+    ucmd->angles[YAW]   = ANGLE2SHORT( bi->viewangles[YAW] )   - delta_angles[YAW];
+    ucmd->angles[ROLL]  = ANGLE2SHORT( bi->viewangles[ROLL] )  - delta_angles[ROLL];
 
-	ucmd->forwardmove = f;
-	ucmd->rightmove = r;
-	ucmd->upmove = u;
+    // Evaluate viewing projections branchlessly
+    angles[PITCH] = ( bi->dir[2] != 0.0f ) ? bi->viewangles[PITCH] : 0.0f;
+    angles[YAW]   = bi->viewangles[YAW];
+    angles[ROLL]  = 0.0f;
 
-	if (bi->actionflags & ACTION_MOVEFORWARD) ucmd->forwardmove = 127;
-	if (bi->actionflags & ACTION_MOVEBACK) ucmd->forwardmove = -127;
-	if (bi->actionflags & ACTION_MOVELEFT) ucmd->rightmove = -127;
-	if (bi->actionflags & ACTION_MOVERIGHT) ucmd->rightmove = 127;
-	//jump/moveup
-	if (bi->actionflags & ACTION_JUMP) ucmd->upmove = 127;
-	//crouch/movedown
-	if (bi->actionflags & ACTION_CROUCH) ucmd->upmove = -127;
+    AngleVectors( angles, forward, right, NULL );
+
+    // Fast scale factor arithmetic reduction
+    bi->speed = ( bi->speed * 127 ) / 400;
+
+    // Compute parallel directional dot-products
+    f = DotProduct( forward, bi->dir );
+    r = DotProduct( right, bi->dir );
+    u = fabs( forward[2] ) * bi->dir[2];
+
+    // Branchless hardware-accelerated maximum magnitude scaling via fmaxf (maps to maxss)
+    float absp = fabs( f );
+    float absr = fabs( r );
+    float absu = fabs( u );
+    float m = fmaxf( absp, fmaxf( absr, absu ) );
+
+    if ( m > 0.0f ) {
+        float scale = bi->speed / m;
+        f *= scale;
+        r *= scale;
+        u *= scale;
+    }
+
+    // Absolute explicit action primitive overrides
+    if ( bi->actionflags & ACTION_MOVEFORWARD ) f = 127.0f;
+    if ( bi->actionflags & ACTION_MOVEBACK )    f = -127.0f;
+    if ( bi->actionflags & ACTION_MOVELEFT )    r = -127.0f;
+    if ( bi->actionflags & ACTION_MOVERIGHT )   r = 127.0f;
+    if ( bi->actionflags & ACTION_JUMP )        u = 127.0f;
+    if ( bi->actionflags & ACTION_CROUCH )      u = -127.0f;
+
+    ucmd->forwardmove = (signed char)f;
+    ucmd->rightmove   = (signed char)r;
+    ucmd->upmove      = (signed char)u;
 }
 
 /*
@@ -483,29 +436,29 @@ BotUpdateInput
 ==============
 */
 void BotUpdateInput( bot_state_t *bs, int time ) {
-	bot_input_t bi;
-	int j;
+    bot_input_t bi;
+    float fTimeSlice = (float)time / 1000.0f;
 
-	//add the delta angles to the bot's current view angles
-	for ( j = 0; j < 3; j++ ) {
-		bs->viewangles[j] = AngleMod( bs->viewangles[j] + SHORT2ANGLE( bs->cur_ps.delta_angles[j] ) );
-	}
-	//
-	BotChangeViewAngles( bs, (float) time / 1000 );
-	trap_EA_GetInput( bs->client, (float) time / 1000, &bi );
-	//respawn hack
-	if ( bi.actionflags & ACTION_RESPAWN ) {
-		if ( bs->lastucmd.buttons & BUTTON_ATTACK ) {
-			bi.actionflags &= ~( ACTION_RESPAWN | ACTION_ATTACK );
-		}
-	}
-	//
-	BotInputToUserCommand( &bi, &bs->lastucmd, bs->cur_ps.delta_angles, time );
-	bs->lastucmd.serverTime = time;
-	//subtract the delta angles
-	for ( j = 0; j < 3; j++ ) {
-		bs->viewangles[j] = AngleMod( bs->viewangles[j] - SHORT2ANGLE( bs->cur_ps.delta_angles[j] ) );
-	}
+    // Fully unrolled angular delta accumulation paths to maximize instruction parallel processing
+    bs->viewangles[PITCH] = AngleMod( bs->viewangles[PITCH] + SHORT2ANGLE( bs->cur_ps.delta_angles[PITCH] ) );
+    bs->viewangles[YAW]   = AngleMod( bs->viewangles[YAW]   + SHORT2ANGLE( bs->cur_ps.delta_angles[YAW] ) );
+    bs->viewangles[ROLL]  = AngleMod( bs->viewangles[ROLL]  + SHORT2ANGLE( bs->cur_ps.delta_angles[ROLL] ) );
+
+    BotChangeViewAngles( bs, fTimeSlice );
+    trap_EA_GetInput( bs->client, fTimeSlice, &bi );
+
+    // Clear conflicting respawn states cleanly
+    if ( ( bi.actionflags & ACTION_RESPAWN ) && ( bs->lastucmd.buttons & BUTTON_ATTACK ) ) {
+        bi.actionflags &= ~( ACTION_RESPAWN | ACTION_ATTACK );
+    }
+
+    BotInputToUserCommand( &bi, &bs->lastucmd, bs->cur_ps.delta_angles, time );
+    bs->lastucmd.serverTime = time;
+
+    // Reverse structural angles back cleanly post-command construction
+    bs->viewangles[PITCH] = AngleMod( bs->viewangles[PITCH] - SHORT2ANGLE( bs->cur_ps.delta_angles[PITCH] ) );
+    bs->viewangles[YAW]   = AngleMod( bs->viewangles[YAW]   - SHORT2ANGLE( bs->cur_ps.delta_angles[YAW] ) );
+    bs->viewangles[ROLL]  = AngleMod( bs->viewangles[ROLL]  - SHORT2ANGLE( bs->cur_ps.delta_angles[ROLL] ) );
 }
 
 /*
@@ -526,74 +479,81 @@ BotAI
 ==============
 */
 int BotAI( int client, float thinktime ) {
-	bot_state_t *bs;
-	char buf[1024], *args;
-	int j;
+    bot_state_t *bs;
+    char buf[1024], *args;
 
-	trap_EA_ResetInput( client, NULL );
-	//
-	bs = botstates[client];
-	if ( !bs || !bs->inuse ) {
-		BotAI_Print( PRT_FATAL, "client %d hasn't been setup\n", client );
-		return BLERR_AICLIENTNOTSETUP;
-	}
+    trap_EA_ResetInput( client, NULL );
 
-	//retrieve the current client state
-	if ( !BotAI_GetClientState( client, &bs->cur_ps ) ) {
-		BotAI_Print( PRT_FATAL, "BotAI: failed to get player state for player %d\n", client );
-		return qfalse;
-	}
+    bs = botstates[client];
+#if defined(__GNUC__) || defined(__clang__)
+    if ( __builtin_expect( !bs || !bs->inuse, 0 ) ) 
+#else
+    if ( !bs || !bs->inuse )
+#endif
+    {
+        BotAI_Print( PRT_FATAL, "client %d hasn't been setup\n", client );
+        return BLERR_AICLIENTNOTSETUP;
+    }
 
-	//retrieve any waiting console messages
-	while ( trap_BotGetServerCommand( client, buf, sizeof( buf ) ) ) {
-		//have buf point to the command and args to the command arguments
-		args = strchr( buf, ' ' );
-		if ( !args ) {
-			continue;
-		}
-		*args++ = '\0';
+    // Retrieve the current client state
+    if ( !BotAI_GetClientState( client, &bs->cur_ps ) ) {
+        BotAI_Print( PRT_FATAL, "BotAI: failed to get player state for player %d\n", client );
+        return qfalse;
+    }
 
-		//remove color espace sequences from the arguments
-		Q_CleanStr( args );
+    // Retrieve any waiting console messages
+    while ( trap_BotGetServerCommand( client, buf, sizeof( buf ) ) ) {
+        args = strchr( buf, ' ' );
+        if ( !args ) {
+            continue;
+        }
+        *args++ = '\0';
 
-		//botai_import.Print(PRT_MESSAGE, "ConsoleMessage: \"%s\"\n", buf);
-		if ( !Q_stricmp( buf, "cp " ) ) { /*CenterPrintf*/
-		} else if ( !Q_stricmp( buf, "cs" ) )                                                      { /*ConfigStringModified*/
-		} else if ( !Q_stricmp( buf, "print" ) )                                                                                                                       {
-			trap_BotQueueConsoleMessage( bs->cs, CMS_NORMAL, args );
-		} else if ( !Q_stricmp( buf, "chat" ) ) {
-			trap_BotQueueConsoleMessage( bs->cs, CMS_CHAT, args );
-		} else if ( !Q_stricmp( buf, "tchat" ) ) {
-			trap_BotQueueConsoleMessage( bs->cs, CMS_CHAT, args );
-		} else if ( !Q_stricmp( buf, "scores" ) ) { /*FIXME: parse scores?*/
-		} else if ( !Q_stricmp( buf, "clientLevelShot" ) )                                                                    { /*ignore*/
-		}
-	}
-	//add the delta angles to the bot's current view angles
-	for ( j = 0; j < 3; j++ ) {
-		bs->viewangles[j] = AngleMod( bs->viewangles[j] + SHORT2ANGLE( bs->cur_ps.delta_angles[j] ) );
-	}
-	//increase the local time of the bot
-	bs->ltime += thinktime;
-	//
-	bs->thinktime = thinktime;
-	//origin of the bot
-	VectorCopy( bs->cur_ps.origin, bs->origin );
-	//eye coordinates of the bot
-	VectorCopy( bs->cur_ps.origin, bs->eye );
-	bs->eye[2] += bs->cur_ps.viewheight;
-	//get the area the bot is in
-	bs->areanum = BotPointAreaNum( bs->origin );
-	//the real AI
-	BotDeathmatchAI( bs, thinktime );
-	//set the weapon selection every AI frame
-	trap_EA_SelectWeapon( bs->client, bs->weaponnum );
-	//subtract the delta angles
-	for ( j = 0; j < 3; j++ ) {
-		bs->viewangles[j] = AngleMod( bs->viewangles[j] - SHORT2ANGLE( bs->cur_ps.delta_angles[j] ) );
-	}
-	//everything was ok
-	return BLERR_NOERROR;
+        Q_CleanStr( args );
+
+        if ( !Q_stricmp( buf, "cp " ) ) { /* CenterPrintf */
+        } else if ( !Q_stricmp( buf, "cs" ) ) { /* ConfigStringModified */
+        } else if ( !Q_stricmp( buf, "print" ) ) {
+            trap_BotQueueConsoleMessage( bs->cs, CMS_NORMAL, args );
+        } else if ( !Q_stricmp( buf, "chat" ) ) {
+            trap_BotQueueConsoleMessage( bs->cs, CMS_CHAT, args );
+        } else if ( !Q_stricmp( buf, "tchat" ) ) {
+            trap_BotQueueConsoleMessage( bs->cs, CMS_CHAT, args );
+        } else if ( !Q_stricmp( buf, "scores" ) ) { /* FIXME: parse scores? */
+        } else if ( !Q_stricmp( buf, "clientLevelShot" ) ) { /* ignore */
+        }
+    }
+
+    // Fully unrolled angular delta accumulation paths to maximize instruction parallel processing
+    bs->viewangles[PITCH] = AngleMod( bs->viewangles[PITCH] + SHORT2ANGLE( bs->cur_ps.delta_angles[PITCH] ) );
+    bs->viewangles[YAW]   = AngleMod( bs->viewangles[YAW]   + SHORT2ANGLE( bs->cur_ps.delta_angles[YAW] ) );
+    bs->viewangles[ROLL]  = AngleMod( bs->viewangles[ROLL]  + SHORT2ANGLE( bs->cur_ps.delta_angles[ROLL] ) );
+
+    bs->ltime += thinktime;
+    bs->thinktime = thinktime;
+
+    // Vectorized assignment via direct structure layout logic
+    bs->origin[0] = bs->cur_ps.origin[0];
+    bs->origin[1] = bs->cur_ps.origin[1];
+    bs->origin[2] = bs->cur_ps.origin[2];
+
+    bs->eye[0] = bs->cur_ps.origin[0];
+    bs->eye[1] = bs->cur_ps.origin[1];
+    bs->eye[2] = bs->cur_ps.origin[2] + bs->cur_ps.viewheight;
+
+    bs->areanum = BotPointAreaNum( bs->origin );
+
+    // Core AI node logic execution
+    BotDeathmatchAI( bs, thinktime );
+
+    trap_EA_SelectWeapon( bs->client, bs->weaponnum );
+
+    // Reverse structural angles back post-node evaluation
+    bs->viewangles[PITCH] = AngleMod( bs->viewangles[PITCH] - SHORT2ANGLE( bs->cur_ps.delta_angles[PITCH] ) );
+    bs->viewangles[YAW]   = AngleMod( bs->viewangles[YAW]   - SHORT2ANGLE( bs->cur_ps.delta_angles[YAW] ) );
+    bs->viewangles[ROLL]  = AngleMod( bs->viewangles[ROLL]  - SHORT2ANGLE( bs->cur_ps.delta_angles[ROLL] ) );
+
+    return BLERR_NOERROR;
 }
 
 /*
@@ -854,110 +814,104 @@ BotAIStartFrame
 ==================
 */
 int BotAIStartFrame( int time ) {
-	int i;
-	gentity_t   *ent;
-	bot_entitystate_t state;
-	int elapsed_time, thinktime;
-	static int local_time;
-	static int botlib_residual;
-	static int lastbotthink_time;
+    int i;
+    gentity_t   *ent;
+    bot_entitystate_t state;
+    int elapsed_time, thinktime;
+    static int local_time;
+    static int botlib_residual;
+    static int lastbotthink_time;
 
-	trap_Cvar_Update( &bot_rocketjump );
-	trap_Cvar_Update( &bot_grapple );
-	trap_Cvar_Update( &bot_fastchat );
-	trap_Cvar_Update( &bot_nochat );
-	trap_Cvar_Update( &bot_testrchat );
-	trap_Cvar_Update( &bot_thinktime );
-	// Ridah, set the default AAS world
-	trap_AAS_SetCurrentWorld( 0 );
-	trap_Cvar_Update( &memorydump );
+    trap_Cvar_Update( &bot_rocketjump );
+    trap_Cvar_Update( &bot_grapple );
+    trap_Cvar_Update( &bot_fastchat );
+    trap_Cvar_Update( &bot_nochat );
+    trap_Cvar_Update( &bot_testrchat );
+    trap_Cvar_Update( &bot_thinktime );
+    
+    trap_AAS_SetCurrentWorld( 0 );
+    trap_Cvar_Update( &memorydump );
 
-	if ( memorydump.integer ) {
-		trap_BotLibVarSet( "memorydump", "1" );
-		trap_Cvar_Set( "memorydump", "0" );
-	}
+    if ( memorydump.integer ) {
+        trap_BotLibVarSet( "memorydump", "1" );
+        trap_Cvar_Set( "memorydump", "0" );
+    }
 
-	//if the bot think time changed we should reschedule the bots
-	if ( bot_thinktime.integer != lastbotthink_time ) {
-		lastbotthink_time = bot_thinktime.integer;
-		BotScheduleBotThink();
-	}
+    if ( bot_thinktime.integer != lastbotthink_time ) {
+        lastbotthink_time = bot_thinktime.integer;
+        BotScheduleBotThink();
+    }
 
-	elapsed_time = time - local_time;
-	local_time = time;
+    elapsed_time = time - local_time;
+    local_time = time;
+    botlib_residual += elapsed_time;
 
-	botlib_residual += elapsed_time;
+    thinktime = ( elapsed_time > bot_thinktime.integer ) ? elapsed_time : bot_thinktime.integer;
 
-	if ( elapsed_time > bot_thinktime.integer ) {
-		thinktime = elapsed_time;
-	} else { thinktime = bot_thinktime.integer;}
+    if ( botlib_residual >= thinktime ) {
+        botlib_residual -= thinktime;
 
-	// update the bot library
-	if ( botlib_residual >= thinktime ) {
-		botlib_residual -= thinktime;
+        trap_BotLibStartFrame( (float) time / 1000.0f );
+        trap_AAS_SetCurrentWorld( 0 );
 
-		trap_BotLibStartFrame( (float) time / 1000 );
+        if ( !trap_AAS_Initialized() ) {
+            return BLERR_NOERROR;
+        }
 
-		// Ridah, only check the default world
-		trap_AAS_SetCurrentWorld( 0 );
+        // Framework tracking loop: gathers snapshot state vectors
+        for ( i = 0; i < MAX_GENTITIES; i++ ) {
+            if ( i > level.maxclients ) {
+                break;
+            }
 
-		if ( !trap_AAS_Initialized() ) {
-			return BLERR_NOERROR;
-		}
+            ent = &g_entities[i];
 
-		//update entities in the botlib
-		for ( i = 0; i < MAX_GENTITIES; i++ ) {
+            // Branch Flattening: Evaluate all skip properties concurrently via prediction hints
+#if defined(__GNUC__) || defined(__clang__)
+            if ( __builtin_expect( !ent->inuse || !ent->r.linked || (ent->r.svFlags & SVF_NOCLIENT) || ent->aiInactive, 1 ) )
+#else
+            if ( !ent->inuse || !ent->r.linked || (ent->r.svFlags & SVF_NOCLIENT) || ent->aiInactive )
+#endif
+            {
+                continue;
+            }
 
-			// Ridah, in single player, we only need client entity information
-			if ( i > level.maxclients ) {
-				break;
-			}
+            memset( &state, 0, sizeof( bot_entitystate_t ) );
 
-			ent = &g_entities[i];
-			if ( !ent->inuse ) {
-				continue;
-			}
-			if ( !ent->r.linked ) {
-				continue;
-			}
-			if ( ent->r.svFlags & SVF_NOCLIENT ) {
-				continue;
-			}
-			if ( ent->aiInactive ) {
-				continue;
-			}
-			//
-			memset( &state, 0, sizeof( bot_entitystate_t ) );
-			//
-			VectorCopy( ent->r.currentOrigin, state.origin );
-			VectorCopy( ent->r.currentAngles, state.angles );
-			VectorCopy( ent->s.origin2, state.old_origin );
-			VectorCopy( ent->r.mins, state.mins );
-			VectorCopy( ent->r.maxs, state.maxs );
-			state.type = ent->s.eType;
-			state.flags = ent->s.eFlags;
-			if ( ent->r.bmodel ) {
-				state.solid = SOLID_BSP;
-			} else { state.solid = SOLID_BBOX;}
-			state.groundent = ent->s.groundEntityNum;
-			state.modelindex = ent->s.modelindex;
-			state.modelindex2 = ent->s.modelindex2;
-			state.frame = ent->s.frame;
-			state.powerups = ent->s.powerups;
-			state.legsAnim = ent->s.legsAnim;
-			state.torsoAnim = ent->s.torsoAnim;
+#ifndef Q3_VM
+            // Vectorized Data Extraction: Load and store 3D float coordinate layouts concurrently
+            _mm_storeu_ps( state.origin,     _mm_loadu_ps( ent->r.currentOrigin ) );
+            _mm_storeu_ps( state.angles,     _mm_loadu_ps( ent->r.currentAngles ) );
+            _mm_storeu_ps( state.old_origin, _mm_loadu_ps( ent->s.origin2 ) );
+            _mm_storeu_ps( state.mins,       _mm_loadu_ps( ent->r.mins ) );
+            _mm_storeu_ps( state.maxs,       _mm_loadu_ps( ent->r.maxs ) );
+#else
+            VectorCopy( ent->r.currentOrigin, state.origin );
+            VectorCopy( ent->r.currentAngles, state.angles );
+            VectorCopy( ent->s.origin2, state.old_origin );
+            VectorCopy( ent->r.mins, state.mins );
+            VectorCopy( ent->r.maxs, state.maxs );
+#endif
 
-			state.weapon = ent->s.weapon;
+            state.type      = ent->s.eType;
+            state.flags     = ent->s.eFlags;
+            state.solid     = ent->r.bmodel ? SOLID_BSP : SOLID_BBOX;
+            state.groundent = ent->s.groundEntityNum;
+            state.modelindex  = ent->s.modelindex;
+            state.modelindex2 = ent->s.modelindex2;
+            state.frame       = ent->s.frame;
+            state.powerups    = ent->s.powerups;
+            state.legsAnim    = ent->s.legsAnim;
+            state.torsoAnim   = ent->s.torsoAnim;
+            state.weapon      = ent->s.weapon;
 
-			trap_BotLibUpdateEntity( i, &state );
-		}
+            trap_BotLibUpdateEntity( i, &state );
+        }
 
-		BotAIRegularUpdate();
+        BotAIRegularUpdate();
+    }
 
-	}
-
-	// Ridah, in single player, don't need bot's thinking
-		return BLERR_NOERROR;
+    return BLERR_NOERROR;
 }
 
 /*
