@@ -77,11 +77,16 @@ fi
 
 # Determine how to run commands (directly or via distrobox)
 USE_DISTROBOX=false
+DISTROBOX_NAME=""
 if [ "$INSIDE_CONTAINER" = false ]; then
     if command -v distrobox &> /dev/null; then
-        # Check if Bazzite-dev-nvidia container exists
+        # Check if Bazzite-dev-nvidia or Bazzite-dev-env container exists
         if distrobox list 2>/dev/null | grep -q "Bazzite-dev-nvidia"; then
             USE_DISTROBOX=true
+            DISTROBOX_NAME="Bazzite-dev-nvidia"
+        elif distrobox list 2>/dev/null | grep -q "Bazzite-dev-env"; then
+            USE_DISTROBOX=true
+            DISTROBOX_NAME="Bazzite-dev-env"
         fi
     fi
 fi
@@ -89,19 +94,19 @@ fi
 # Helper function to run commands in the correct context
 run_build_cmd() {
     if [ "$USE_DISTROBOX" = true ]; then
-        distrobox enter Bazzite-dev-nvidia -- "$@"
+        distrobox enter "$DISTROBOX_NAME" -- "$@"
     else
         "$@"
     fi
 }
 
 if [ "$USE_DISTROBOX" = true ]; then
-    echo -e "${BLUE}Running build commands inside 'Bazzite-dev-nvidia' distrobox container...${NC}"
+    echo -e "${BLUE}Running build commands inside '$DISTROBOX_NAME' distrobox container...${NC}"
 else
     if [ "$INSIDE_CONTAINER" = true ]; then
         echo -e "${BLUE}Running build commands directly inside container...${NC}"
     else
-        echo -e "${YELLOW}Warning: Distrobox 'Bazzite-dev-nvidia' not found. Compiling on host...${NC}"
+        echo -e "${YELLOW}Warning: Compatible distrobox container not found. Compiling on host...${NC}"
     fi
 fi
 
