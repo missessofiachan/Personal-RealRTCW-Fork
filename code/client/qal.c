@@ -2,159 +2,147 @@
 ===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
 Copyright (C) 2005 Stuart Dalton (badcdev@gmail.com)
+Copyright (C) 2026
 
-This file is part of Quake III Arena source code.
-
-Quake III Arena source code is free software; you can redistribute it
-and/or modify it under the terms of the GNU General Public License as
-published by the Free Software Foundation; either version 2 of the License,
-or (at your option) any later version.
-
-Quake III Arena source code is distributed in the hope that it will be
-useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with Quake III Arena source code; if not, write to the Free Software
-Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+This file is part of Quake III Arena / RealRTCW source code.
 ===========================================================================
 */
 
-// Dynamically loads OpenAL
-
 #ifdef USE_OPENAL
-
-#include "qal.h"
-
 #ifdef USE_OPENAL_DLOPEN
 
+#include "qal.h"
 #include "../sys/sys_loadlib.h"
 
-LPALENABLE qalEnable;
-LPALDISABLE qalDisable;
-LPALISENABLED qalIsEnabled;
-LPALGETSTRING qalGetString;
-LPALGETBOOLEANV qalGetBooleanv;
-LPALGETINTEGERV qalGetIntegerv;
-LPALGETFLOATV qalGetFloatv;
-LPALGETDOUBLEV qalGetDoublev;
-LPALGETBOOLEAN qalGetBoolean;
-LPALGETINTEGER qalGetInteger;
-LPALGETFLOAT qalGetFloat;
-LPALGETDOUBLE qalGetDouble;
-LPALGETERROR qalGetError;
-LPALISEXTENSIONPRESENT qalIsExtensionPresent;
-LPALGETPROCADDRESS qalGetProcAddress;
-LPALGETENUMVALUE qalGetEnumValue;
-LPALLISTENERF qalListenerf;
-LPALLISTENER3F qalListener3f;
-LPALLISTENERFV qalListenerfv;
-LPALLISTENERI qalListeneri;
-LPALGETLISTENERF qalGetListenerf;
-LPALGETLISTENER3F qalGetListener3f;
-LPALGETLISTENERFV qalGetListenerfv;
-LPALGETLISTENERI qalGetListeneri;
-LPALGENSOURCES qalGenSources;
-LPALDELETESOURCES qalDeleteSources;
-LPALISSOURCE qalIsSource;
-LPALSOURCEF qalSourcef;
-LPALSOURCE3F qalSource3f;
-LPALSOURCEFV qalSourcefv;
-LPALSOURCEI qalSourcei;
-LPALSOURCE3I qalSource3i;
-LPALGETSOURCEF qalGetSourcef;
-LPALGETSOURCE3F qalGetSource3f;
-LPALGETSOURCEFV qalGetSourcefv;
-LPALGETSOURCEI qalGetSourcei;
-LPALSOURCEPLAYV qalSourcePlayv;
-LPALSOURCESTOPV qalSourceStopv;
-LPALSOURCEREWINDV qalSourceRewindv;
-LPALSOURCEPAUSEV qalSourcePausev;
-LPALSOURCEPLAY qalSourcePlay;
-LPALSOURCESTOP qalSourceStop;
-LPALSOURCEREWIND qalSourceRewind;
-LPALSOURCEPAUSE qalSourcePause;
-LPALSOURCEQUEUEBUFFERS qalSourceQueueBuffers;
-LPALSOURCEUNQUEUEBUFFERS qalSourceUnqueueBuffers;
-LPALGENBUFFERS qalGenBuffers;
-LPALDELETEBUFFERS qalDeleteBuffers;
-LPALISBUFFER qalIsBuffer;
-LPALBUFFERDATA qalBufferData;
-LPALGETBUFFERF qalGetBufferf;
-LPALGETBUFFERI qalGetBufferi;
-LPALDOPPLERFACTOR qalDopplerFactor;
-LPALSPEEDOFSOUND qalSpeedOfSound;
-LPALDISTANCEMODEL qalDistanceModel;
-
-LPALCCREATECONTEXT qalcCreateContext;
-LPALCMAKECONTEXTCURRENT qalcMakeContextCurrent;
-LPALCPROCESSCONTEXT qalcProcessContext;
-LPALCSUSPENDCONTEXT qalcSuspendContext;
-LPALCDESTROYCONTEXT qalcDestroyContext;
-LPALCGETCURRENTCONTEXT qalcGetCurrentContext;
-LPALCGETCONTEXTSDEVICE qalcGetContextsDevice;
-LPALCOPENDEVICE qalcOpenDevice;
-LPALCCLOSEDEVICE qalcCloseDevice;
-LPALCGETERROR qalcGetError;
-LPALCISEXTENSIONPRESENT qalcIsExtensionPresent;
-LPALCGETPROCADDRESS qalcGetProcAddress;
-LPALCGETENUMVALUE qalcGetEnumValue;
-LPALCGETSTRING qalcGetString;
-LPALCGETINTEGERV qalcGetIntegerv;
-LPALCCAPTUREOPENDEVICE qalcCaptureOpenDevice;
-LPALCCAPTURECLOSEDEVICE qalcCaptureCloseDevice;
-LPALCCAPTURESTART qalcCaptureStart;
-LPALCCAPTURESTOP qalcCaptureStop;
-LPALCCAPTURESAMPLES qalcCaptureSamples;
-
-/* EFX functions */
-LPALGENEFFECTS qalGenEffects = NULL;
-LPALDELETEEFFECTS qalDeleteEffects = NULL;
-LPALISEFFECT qalIsEffect = NULL;
-LPALEFFECTI qalEffecti = NULL;
-LPALEFFECTF qalEffectf = NULL;
-LPALEFFECTFV qalEffectfv = NULL;
-LPALGENAUXILIARYEFFECTSLOTS qalGenAuxiliaryEffectSlots = NULL;
-LPALDELETEAUXILIARYEFFECTSLOTS qalDeleteAuxiliaryEffectSlots = NULL;
-LPALAUXILIARYEFFECTSLOTI qalAuxiliaryEffectSloti = NULL;
-LPALAUXILIARYEFFECTSLOTF qalAuxiliaryEffectSlotf = NULL;
-LPALAUXILIARYEFFECTSLOTFV qalAuxiliaryEffectSlotfv = NULL;
-LPALGENFILTERS qalGenFilters = NULL;
-LPALDELETEFILTERS qalDeleteFilters = NULL;
-LPALISFILTER qalIsFilter = NULL;
-LPALFILTERI qalFilteri = NULL;
-LPALFILTERF qalFilterf = NULL;
-
-/* HRTF functions (ALC_SOFT_HRTF) */
-LPALCRESETDEVICESOFT qalcResetDeviceSOFT = NULL;
-LPALCGETSTRINGISOFT qalcGetStringiSOFT = NULL;
-
 static void *OpenALLib = NULL;
-
 static qboolean alinit_fail = qfalse;
 
-/*
-=================
-GPA
-=================
-*/
-static void *GPA(char *str)
-{
-	void *rv;
+// ===========================================================================
+// X-MACRO LIST DEFINITIONS
+// ===========================================================================
 
-	rv = Sys_LoadFunction(OpenALLib, str);
-	if(!rv)
-	{
-		Com_Printf( " Can't load symbol %s\n", str);
-		alinit_fail = qtrue;
-		return NULL;
-	}
-	else
-	{
-		Com_DPrintf( " Loaded symbol %s (%p)\n", str, rv);
-        return rv;
-	}
+#define AL_CORE_FUNCTIONS \
+    X(LPALENABLE, qalEnable, "alEnable") \
+    X(LPALDISABLE, qalDisable, "alDisable") \
+    X(LPALISENABLED, qalIsEnabled, "alIsEnabled") \
+    X(LPALGETSTRING, qalGetString, "alGetString") \
+    X(LPALGETBOOLEANV, qalGetBooleanv, "alGetBooleanv") \
+    X(LPALGETINTEGERV, qalGetIntegerv, "alGetIntegerv") \
+    X(LPALGETFLOATV, qalGetFloatv, "alGetFloatv") \
+    X(LPALGETDOUBLEV, qalGetDoublev, "alGetDoublev") \
+    X(LPALGETBOOLEAN, qalGetBoolean, "alGetBoolean") \
+    X(LPALGETINTEGER, qalGetInteger, "alGetInteger") \
+    X(LPALGETFLOAT, qalGetFloat, "alGetFloat") \
+    X(LPALGETDOUBLE, qalGetDouble, "alGetDouble") \
+    X(LPALGETERROR, qalGetError, "alGetError") \
+    X(LPALISEXTENSIONPRESENT, qalIsExtensionPresent, "alIsExtensionPresent") \
+    X(LPALGETPROCADDRESS, qalGetProcAddress, "alGetProcAddress") \
+    X(LPALGETENUMVALUE, qalGetEnumValue, "alGetEnumValue") \
+    X(LPALLISTENERF, qalListenerf, "alListenerf") \
+    X(LPALLISTENER3F, qalListener3f, "alListener3f") \
+    X(LPALLISTENERFV, qalListenerfv, "alListenerfv") \
+    X(LPALLISTENERI, qalListeneri, "alListeneri") \
+    X(LPALGETLISTENERF, qalGetListenerf, "alGetListenerf") \
+    X(LPALGETLISTENER3F, qalGetListener3f, "alGetListener3f") \
+    X(LPALGETLISTENERFV, qalGetListenerfv, "alGetListenerfv") \
+    X(LPALGETLISTENERI, qalGetListeneri, "alGetListeneri") \
+    X(LPALGENSOURCES, qalGenSources, "alGenSources") \
+    X(LPALDELETESOURCES, qalDeleteSources, "alDeleteSources") \
+    X(LPALISSOURCE, qalIsSource, "alIsSource") \
+    X(LPALSOURCEF, qalSourcef, "alSourcef") \
+    X(LPALSOURCE3F, qalSource3f, "alSource3f") \
+    X(LPALSOURCEFV, qalSourcefv, "alSourcefv") \
+    X(LPALSOURCEI, qalSourcei, "alSourcei") \
+    X(LPALSOURCE3I, qalSource3i, "alSource3i") \
+    X(LPALGETSOURCEF, qalGetSourcef, "alGetSourcef") \
+    X(LPALGETSOURCE3F, qalGetSource3f, "alGetSource3f") \
+    X(LPALGETSOURCEFV, qalGetSourcefv, "alGetSourcefv") \
+    X(LPALGETSOURCEI, qalGetSourcei, "alGetSourcei") \
+    X(LPALSOURCEPLAYV, qalSourcePlayv, "alSourcePlayv") \
+    X(LPALSOURCESTOPV, qalSourceStopv, "alSourceStopv") \
+    X(LPALSOURCEREWINDV, qalSourceRewindv, "alSourceRewindv") \
+    X(LPALSOURCEPAUSEV, qalSourcePausev, "alSourcePausev") \
+    X(LPALSOURCEPLAY, qalSourcePlay, "alSourcePlay") \
+    X(LPALSOURCESTOP, qalSourceStop, "alSourceStop") \
+    X(LPALSOURCEREWIND, qalSourceRewind, "alSourceRewind") \
+    X(LPALSOURCEPAUSE, qalSourcePause, "alSourcePause") \
+    X(LPALSOURCEQUEUEBUFFERS, qalSourceQueueBuffers, "alSourceQueueBuffers") \
+    X(LPALSOURCEUNQUEUEBUFFERS, qalSourceUnqueueBuffers, "alSourceUnqueueBuffers") \
+    X(LPALGENBUFFERS, qalGenBuffers, "alGenBuffers") \
+    X(LPALDELETEBUFFERS, qalDeleteBuffers, "alDeleteBuffers") \
+    X(LPALISBUFFER, qalIsBuffer, "alIsBuffer") \
+    X(LPALBUFFERDATA, qalBufferData, "alBufferData") \
+    X(LPALGETBUFFERF, qalGetBufferf, "alGetBufferf") \
+    X(LPALGETBUFFERI, qalGetBufferi, "alGetBufferi") \
+    X(LPALDOPPLERFACTOR, qalDopplerFactor, "alDopplerFactor") \
+    X(LPALSPEEDOFSOUND, qalSpeedOfSound, "alSpeedOfSound") \
+    X(LPALDISTANCEMODEL, qalDistanceModel, "alDistanceModel")
+
+#define ALC_CORE_FUNCTIONS \
+    X(LPALCCREATECONTEXT, qalcCreateContext, "alcCreateContext") \
+    X(LPALCMAKECONTEXTCURRENT, qalcMakeContextCurrent, "alcMakeContextCurrent") \
+    X(LPALCPROCESSCONTEXT, qalcProcessContext, "alcProcessContext") \
+    X(LPALCSUSPENDCONTEXT, qalcSuspendContext, "alcSuspendContext") \
+    X(LPALCDESTROYCONTEXT, qalcDestroyContext, "alcDestroyContext") \
+    X(LPALCGETCURRENTCONTEXT, qalcGetCurrentContext, "alcGetCurrentContext") \
+    X(LPALCGETCONTEXTSDEVICE, qalcGetContextsDevice, "alcGetContextsDevice") \
+    X(LPALCOPENDEVICE, qalcOpenDevice, "alcOpenDevice") \
+    X(LPALCCLOSEDEVICE, qalcCloseDevice, "alcCloseDevice") \
+    X(LPALCGETERROR, qalcGetError, "alcGetError") \
+    X(LPALCISEXTENSIONPRESENT, qalcIsExtensionPresent, "alcIsExtensionPresent") \
+    X(LPALCGETPROCADDRESS, qalcGetProcAddress, "alcGetProcAddress") \
+    X(LPALCGETENUMVALUE, qalcGetEnumValue, "alcGetEnumValue") \
+    X(LPALCGETSTRING, qalcGetString, "alcGetString") \
+    X(LPALCGETINTEGERV, qalcGetIntegerv, "alcGetIntegerv") \
+    X(LPALCCAPTUREOPENDEVICE, qalcCaptureOpenDevice, "alcCaptureOpenDevice") \
+    X(LPALCCAPTURECLOSEDEVICE, qalcCaptureCloseDevice, "alcCaptureCloseDevice") \
+    X(LPALCCAPTURESTART, qalcCaptureStart, "alcCaptureStart") \
+    X(LPALCCAPTURESTOP, qalcCaptureStop, "alcCaptureStop") \
+    X(LPALCCAPTURESAMPLES, qalcCaptureSamples, "alcCaptureSamples")
+
+#define AL_EFX_FUNCTIONS \
+    X(LPALGENEFFECTS, qalGenEffects, "alGenEffects") \
+    X(LPALDELETEEFFECTS, qalDeleteEffects, "alDeleteEffects") \
+    X(LPALISEFFECT, qalIsEffect, "alIsEffect") \
+    X(LPALEFFECTI, qalEffecti, "alEffecti") \
+    X(LPALEFFECTF, qalEffectf, "alEffectf") \
+    X(LPALEFFECTFV, qalEffectfv, "alEffectfv") \
+    X(LPALGENAUXILIARYEFFECTSLOTS, qalGenAuxiliaryEffectSlots, "alGenAuxiliaryEffectSlots") \
+    X(LPALDELETEAUXILIARYEFFECTSLOTS, qalDeleteAuxiliaryEffectSlots, "alDeleteAuxiliaryEffectSlots") \
+    X(LPALAUXILIARYEFFECTSLOTI, qalAuxiliaryEffectSloti, "alAuxiliaryEffectSloti") \
+    X(LPALAUXILIARYEFFECTSLOTF, qalAuxiliaryEffectSlotf, "alAuxiliaryEffectSlotf") \
+    X(LPALAUXILIARYEFFECTSLOTFV, qalAuxiliaryEffectSlotfv, "alAuxiliaryEffectSlotfv") \
+    X(LPALGENFILTERS, qalGenFilters, "alGenFilters") \
+    X(LPALDELETEFILTERS, qalDeleteFilters, "alDeleteFilters") \
+    X(LPALISFILTER, qalIsFilter, "alIsFilter") \
+    X(LPALFILTERI, qalFilteri, "alFilteri") \
+    X(LPALFILTERF, qalFilterf, "alFilterf")
+
+#define AL_HRTF_FUNCTIONS \
+    X(LPALCRESETDEVICESOFT, qalcResetDeviceSOFT, "alcResetDeviceSOFT") \
+    X(LPALCGETSTRINGISOFT, qalcGetStringiSOFT, "alcGetStringiSOFT")
+
+// ===========================================================================
+// GLOBAL FUNCTION POINTER ALLOCATION
+// ===========================================================================
+
+#define X(type, var, name) type var = NULL;
+AL_CORE_FUNCTIONS
+ALC_CORE_FUNCTIONS
+AL_EFX_FUNCTIONS
+AL_HRTF_FUNCTIONS
+#undef X
+
+static void *GPA(const char *str)
+{
+    void *rv = Sys_LoadFunction(OpenALLib, str);
+    if (!rv)
+    {
+        Com_Printf("QAL Error: Can't load symbol %s\n", str);
+        alinit_fail = qtrue;
+        return NULL;
+    }
+    return rv;
 }
 
 /*
@@ -164,103 +152,43 @@ QAL_Init
 */
 qboolean QAL_Init(const char *libname)
 {
-	if(OpenALLib)
-		return qtrue;
+    if (OpenALLib)
+        return qtrue;
 
-	if(!(OpenALLib = Sys_LoadDll(libname, qtrue)))
-		return qfalse;
+    if (!(OpenALLib = Sys_LoadDll(libname, qtrue)))
+        return qfalse;
 
-	alinit_fail = qfalse;
+    alinit_fail = qfalse;
 
-	qalEnable = GPA("alEnable");
-	qalDisable = GPA("alDisable");
-	qalIsEnabled = GPA("alIsEnabled");
-	qalGetString = GPA("alGetString");
-	qalGetBooleanv = GPA("alGetBooleanv");
-	qalGetIntegerv = GPA("alGetIntegerv");
-	qalGetFloatv = GPA("alGetFloatv");
-	qalGetDoublev = GPA("alGetDoublev");
-	qalGetBoolean = GPA("alGetBoolean");
-	qalGetInteger = GPA("alGetInteger");
-	qalGetFloat = GPA("alGetFloat");
-	qalGetDouble = GPA("alGetDouble");
-	qalGetError = GPA("alGetError");
-	qalIsExtensionPresent = GPA("alIsExtensionPresent");
-	qalGetProcAddress = GPA("alGetProcAddress");
-	qalGetEnumValue = GPA("alGetEnumValue");
-	qalListenerf = GPA("alListenerf");
-	qalListener3f = GPA("alListener3f");
-	qalListenerfv = GPA("alListenerfv");
-	qalListeneri = GPA("alListeneri");
-	qalGetListenerf = GPA("alGetListenerf");
-	qalGetListener3f = GPA("alGetListener3f");
-	qalGetListenerfv = GPA("alGetListenerfv");
-	qalGetListeneri = GPA("alGetListeneri");
-	qalGenSources = GPA("alGenSources");
-	qalDeleteSources = GPA("alDeleteSources");
-	qalIsSource = GPA("alIsSource");
-	qalSourcef = GPA("alSourcef");
-	qalSource3f = GPA("alSource3f");
-	qalSourcefv = GPA("alSourcefv");
-	qalSourcei = GPA("alSourcei");
-	qalSource3i = GPA("alSource3i");
-	qalGetSourcef = GPA("alGetSourcef");
-	qalGetSource3f = GPA("alGetSource3f");
-	qalGetSourcefv = GPA("alGetSourcefv");
-	qalGetSourcei = GPA("alGetSourcei");
-	qalSourcePlayv = GPA("alSourcePlayv");
-	qalSourceStopv = GPA("alSourceStopv");
-	qalSourceRewindv = GPA("alSourceRewindv");
-	qalSourcePausev = GPA("alSourcePausev");
-	qalSourcePlay = GPA("alSourcePlay");
-	qalSourceStop = GPA("alSourceStop");
-	qalSourceRewind = GPA("alSourceRewind");
-	qalSourcePause = GPA("alSourcePause");
-	qalSourceQueueBuffers = GPA("alSourceQueueBuffers");
-	qalSourceUnqueueBuffers = GPA("alSourceUnqueueBuffers");
-	qalGenBuffers = GPA("alGenBuffers");
-	qalDeleteBuffers = GPA("alDeleteBuffers");
-	qalIsBuffer = GPA("alIsBuffer");
-	qalBufferData = GPA("alBufferData");
-	qalGetBufferf = GPA("alGetBufferf");
-	qalGetBufferi = GPA("alGetBufferi");
-	qalDopplerFactor = GPA("alDopplerFactor");
-	qalSpeedOfSound = GPA("alSpeedOfSound");
-	qalDistanceModel = GPA("alDistanceModel");
+#define X(type, var, name) var = (type)GPA(name);
+    AL_CORE_FUNCTIONS
+    ALC_CORE_FUNCTIONS
+#undef X
 
-	qalcCreateContext = GPA("alcCreateContext");
-	qalcMakeContextCurrent = GPA("alcMakeContextCurrent");
-	qalcProcessContext = GPA("alcProcessContext");
-	qalcSuspendContext = GPA("alcSuspendContext");
-	qalcDestroyContext = GPA("alcDestroyContext");
-	qalcGetCurrentContext = GPA("alcGetCurrentContext");
-	qalcGetContextsDevice = GPA("alcGetContextsDevice");
-	qalcOpenDevice = GPA("alcOpenDevice");
-	qalcCloseDevice = GPA("alcCloseDevice");
-	qalcGetError = GPA("alcGetError");
-	qalcIsExtensionPresent = GPA("alcIsExtensionPresent");
-	qalcGetProcAddress = GPA("alcGetProcAddress");
-	qalcGetEnumValue = GPA("alcGetEnumValue");
-	qalcGetString = GPA("alcGetString");
-	qalcGetIntegerv = GPA("alcGetIntegerv");
-	qalcCaptureOpenDevice = GPA("alcCaptureOpenDevice");
-	qalcCaptureCloseDevice = GPA("alcCaptureCloseDevice");
-	qalcCaptureStart = GPA("alcCaptureStart");
-	qalcCaptureStop = GPA("alcCaptureStop");
-	qalcCaptureSamples = GPA("alcCaptureSamples");
+    if (alinit_fail)
+    {
+        QAL_Shutdown();
+        Com_Printf("QAL Fatal: Core OpenAL symbols missing.\n");
+        return qfalse;
+    }
 
-	if(alinit_fail)
-	{
-		QAL_Shutdown();
-		Com_Printf( " One or more symbols not found\n");
-		return qfalse;
-	}
+    // Handle HRTF extension safely via core alcGetProcAddress fallback
+    qalcResetDeviceSOFT = (LPALCRESETDEVICESOFT)qalcGetProcAddress(NULL, "alcResetDeviceSOFT");
+    qalcGetStringiSOFT = (LPALCGETSTRINGISOFT)qalcGetProcAddress(NULL, "alcGetStringiSOFT");
 
-	/* Load HRTF extension functions via alcGetProcAddress (graceful, not fatal) */
-	qalcResetDeviceSOFT = (LPALCRESETDEVICESOFT)qalcGetProcAddress(NULL, "alcResetDeviceSOFT");
-	qalcGetStringiSOFT = (LPALCGETSTRINGISOFT)qalcGetProcAddress(NULL, "alcGetStringiSOFT");
+    return qtrue;
+}
 
-	return qtrue;
+/*
+=================
+QAL_InitEFX
+=================
+*/
+void QAL_InitEFX(void)
+{
+#define X(type, var, name) var = (type)qalGetProcAddress(name);
+    AL_EFX_FUNCTIONS
+#undef X
 }
 
 /*
@@ -268,142 +196,32 @@ qboolean QAL_Init(const char *libname)
 QAL_Shutdown
 =================
 */
-void QAL_Shutdown( void )
+void QAL_Shutdown(void)
 {
-	if(OpenALLib)
-	{
-		Sys_UnloadLibrary(OpenALLib);
-		OpenALLib = NULL;
-	}
+    if (OpenALLib)
+    {
+        Sys_UnloadLibrary(OpenALLib);
+        OpenALLib = NULL;
+    }
 
-	qalEnable = NULL;
-	qalDisable = NULL;
-	qalIsEnabled = NULL;
-	qalGetString = NULL;
-	qalGetBooleanv = NULL;
-	qalGetIntegerv = NULL;
-	qalGetFloatv = NULL;
-	qalGetDoublev = NULL;
-	qalGetBoolean = NULL;
-	qalGetInteger = NULL;
-	qalGetFloat = NULL;
-	qalGetDouble = NULL;
-	qalGetError = NULL;
-	qalIsExtensionPresent = NULL;
-	qalGetProcAddress = NULL;
-	qalGetEnumValue = NULL;
-	qalListenerf = NULL;
-	qalListener3f = NULL;
-	qalListenerfv = NULL;
-	qalListeneri = NULL;
-	qalGetListenerf = NULL;
-	qalGetListener3f = NULL;
-	qalGetListenerfv = NULL;
-	qalGetListeneri = NULL;
-	qalGenSources = NULL;
-	qalDeleteSources = NULL;
-	qalIsSource = NULL;
-	qalSourcef = NULL;
-	qalSource3f = NULL;
-	qalSourcefv = NULL;
-	qalSourcei = NULL;
-	qalSource3i = NULL;
-	qalGetSourcef = NULL;
-	qalGetSource3f = NULL;
-	qalGetSourcefv = NULL;
-	qalGetSourcei = NULL;
-	qalSourcePlayv = NULL;
-	qalSourceStopv = NULL;
-	qalSourceRewindv = NULL;
-	qalSourcePausev = NULL;
-	qalSourcePlay = NULL;
-	qalSourceStop = NULL;
-	qalSourceRewind = NULL;
-	qalSourcePause = NULL;
-	qalSourceQueueBuffers = NULL;
-	qalSourceUnqueueBuffers = NULL;
-	qalGenBuffers = NULL;
-	qalDeleteBuffers = NULL;
-	qalIsBuffer = NULL;
-	qalBufferData = NULL;
-	qalGetBufferf = NULL;
-	qalGetBufferi = NULL;
-	qalDopplerFactor = NULL;
-	qalSpeedOfSound = NULL;
-	qalDistanceModel = NULL;
-
-	qalcCreateContext = NULL;
-	qalcMakeContextCurrent = NULL;
-	qalcProcessContext = NULL;
-	qalcSuspendContext = NULL;
-	qalcDestroyContext = NULL;
-	qalcGetCurrentContext = NULL;
-	qalcGetContextsDevice = NULL;
-	qalcOpenDevice = NULL;
-	qalcCloseDevice = NULL;
-	qalcGetError = NULL;
-	qalcIsExtensionPresent = NULL;
-	qalcGetProcAddress = NULL;
-	qalcGetEnumValue = NULL;
-	qalcGetString = NULL;
-	qalcGetIntegerv = NULL;
-	qalcCaptureOpenDevice = NULL;
-	qalcCaptureCloseDevice = NULL;
-	qalcCaptureStart = NULL;
-	qalcCaptureStop = NULL;
-	qalcCaptureSamples = NULL;
-
-	/* Reset EFX functions */
-	qalGenEffects = NULL;
-	qalDeleteEffects = NULL;
-	qalIsEffect = NULL;
-	qalEffecti = NULL;
-	qalEffectf = NULL;
-	qalEffectfv = NULL;
-	qalGenAuxiliaryEffectSlots = NULL;
-	qalDeleteAuxiliaryEffectSlots = NULL;
-	qalAuxiliaryEffectSloti = NULL;
-	qalAuxiliaryEffectSlotf = NULL;
-	qalAuxiliaryEffectSlotfv = NULL;
-	qalGenFilters = NULL;
-	qalDeleteFilters = NULL;
-	qalIsFilter = NULL;
-	qalFilteri = NULL;
-	qalFilterf = NULL;
-
-	/* Reset HRTF functions */
-	qalcResetDeviceSOFT = NULL;
-	qalcGetStringiSOFT = NULL;
+#define X(type, var, name) var = NULL;
+    AL_CORE_FUNCTIONS
+    ALC_CORE_FUNCTIONS
+    AL_EFX_FUNCTIONS
+    AL_HRTF_FUNCTIONS
+#undef X
 }
 
-void QAL_InitEFX(void) {
-	qalGenEffects = (LPALGENEFFECTS)qalGetProcAddress("alGenEffects");
-	qalDeleteEffects = (LPALDELETEEFFECTS)qalGetProcAddress("alDeleteEffects");
-	qalIsEffect = (LPALISEFFECT)qalGetProcAddress("alIsEffect");
-	qalEffecti = (LPALEFFECTI)qalGetProcAddress("alEffecti");
-	qalEffectf = (LPALEFFECTF)qalGetProcAddress("alEffectf");
-	qalEffectfv = (LPALEFFECTFV)qalGetProcAddress("alEffectfv");
-	qalGenAuxiliaryEffectSlots = (LPALGENAUXILIARYEFFECTSLOTS)qalGetProcAddress("alGenAuxiliaryEffectSlots");
-	qalDeleteAuxiliaryEffectSlots = (LPALDELETEAUXILIARYEFFECTSLOTS)qalGetProcAddress("alDeleteAuxiliaryEffectSlots");
-	qalAuxiliaryEffectSloti = (LPALAUXILIARYEFFECTSLOTI)qalGetProcAddress("alAuxiliaryEffectSloti");
-	qalAuxiliaryEffectSlotf = (LPALAUXILIARYEFFECTSLOTF)qalGetProcAddress("alAuxiliaryEffectSlotf");
-	qalAuxiliaryEffectSlotfv = (LPALAUXILIARYEFFECTSLOTFV)qalGetProcAddress("alAuxiliaryEffectSlotfv");
-	qalGenFilters = (LPALGENFILTERS)qalGetProcAddress("alGenFilters");
-	qalDeleteFilters = (LPALDELETEFILTERS)qalGetProcAddress("alDeleteFilters");
-	qalIsFilter = (LPALISFILTER)qalGetProcAddress("alIsFilter");
-	qalFilteri = (LPALFILTERI)qalGetProcAddress("alFilteri");
-	qalFilterf = (LPALFILTERF)qalGetProcAddress("alFilterf");
-}
-#else
-qboolean QAL_Init(const char *libname)
-{
-	return qtrue;
-}
-void QAL_InitEFX(void)
-{
-}
-void QAL_Shutdown( void )
-{
-}
+#define USE_OPENAL_LEGACY_STUBS
+#ifndef USE_OPENAL_LEGACY_STUBS
+// Keep structural compatibility for non-dlopen implementations if needed
 #endif
-#endif
+
+#else // !USE_OPENAL_DLOPEN
+
+qboolean QAL_Init(const char *libname) { return qtrue; }
+void QAL_InitEFX(void) {}
+void QAL_Shutdown(void) {}
+
+#endif // USE_OPENAL_DLOPEN
+#endif // USE_OPENAL
