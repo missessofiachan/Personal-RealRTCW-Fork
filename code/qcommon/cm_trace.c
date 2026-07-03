@@ -1466,22 +1466,20 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end,
 	vec3_t offset;
 	cmodel_t    *cmod;
 
+    Com_Memset( &tw, 0, sizeof( tw ) );
+    tw.trace.fraction = 1;
+    VectorCopy( origin, tw.modelOrigin );
+
+    if ( !cm.numNodes ) {
+        *results = tw.trace;
+        return;
+    }
+
 	cmod = CM_ClipHandleToModel( model );
 
 	cm.checkcount++;        // for multi-check avoidance
 
 	c_traces++;             // for statistics, may be zeroed
-
-	// fill in a default trace
-	Com_Memset( &tw, 0, sizeof( tw ) );
-	tw.trace.fraction = 1;  // assume it goes the entire distance until shown otherwise
-	VectorCopy( origin, tw.modelOrigin );
-
-	if ( !cm.numNodes ) {
-		*results = tw.trace;
-
-		return; // map not loaded, shouldn't happen
-	}
 
 	// allow NULL to be passed in for 0,0,0
 	if ( !mins ) {

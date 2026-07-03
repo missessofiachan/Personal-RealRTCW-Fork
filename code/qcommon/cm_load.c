@@ -868,6 +868,12 @@ CM_ModelBounds
 ===================
 */
 void CM_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs ) {
+	if ( !cm.numNodes ) {
+		VectorClear( mins );
+		VectorClear( maxs );
+		return;
+	}
+
 	cmodel_t    *cmod;
 
 	cmod = CM_ClipHandleToModel( model );
