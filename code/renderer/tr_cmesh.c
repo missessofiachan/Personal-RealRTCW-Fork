@@ -33,51 +33,32 @@ If you have questions concerning this license or the applicable additional terms
 #include "tr_local.h"
 
 static float ProjectRadius( float r, vec3_t location ) {
-	float pr;
-	float dist;
-	float c;
-	vec3_t p;
-	float projected[4];
+    float dist;
+    float c;
 
-	c = DotProduct( tr.viewParms.or.axis[0], tr.viewParms.or.origin );
-	dist = DotProduct( tr.viewParms.or.axis[0], location ) - c;
+    c = DotProduct( tr.viewParms.or.axis[0], tr.viewParms.or.origin );
+    dist = DotProduct( tr.viewParms.or.axis[0], location ) - c;
 
-	if ( dist <= 0 ) {
-		return 0;
-	}
+    if ( dist <= 0 ) {
+        return 0;
+    }
 
-	p[0] = 0;
-	p[1] = fabs( r );
-	p[2] = -dist;
+    // Optimization: The original function wasted cycles calculating projected[0] and projected[2]
+    // which are completely discarded. We calculate only what is required for the final division.
+    float p1 = fabs( r );
+    float p2 = -dist;
 
-	projected[0] = p[0] * tr.viewParms.projectionMatrix[0] +
-				   p[1] * tr.viewParms.projectionMatrix[4] +
-				   p[2] * tr.viewParms.projectionMatrix[8] +
-				   tr.viewParms.projectionMatrix[12];
+    float projected1 = p1 * tr.viewParms.projectionMatrix[5] +
+                       p2 * tr.viewParms.projectionMatrix[9] +
+                       tr.viewParms.projectionMatrix[13];
 
-	projected[1] = p[0] * tr.viewParms.projectionMatrix[1] +
-				   p[1] * tr.viewParms.projectionMatrix[5] +
-				   p[2] * tr.viewParms.projectionMatrix[9] +
-				   tr.viewParms.projectionMatrix[13];
+    float projected3 = p1 * tr.viewParms.projectionMatrix[7] +
+                       p2 * tr.viewParms.projectionMatrix[11] +
+                       tr.viewParms.projectionMatrix[15];
 
-	projected[2] = p[0] * tr.viewParms.projectionMatrix[2] +
-				   p[1] * tr.viewParms.projectionMatrix[6] +
-				   p[2] * tr.viewParms.projectionMatrix[10] +
-				   tr.viewParms.projectionMatrix[14];
+    float pr = projected1 / projected3;
 
-	projected[3] = p[0] * tr.viewParms.projectionMatrix[3] +
-				   p[1] * tr.viewParms.projectionMatrix[7] +
-				   p[2] * tr.viewParms.projectionMatrix[11] +
-				   tr.viewParms.projectionMatrix[15];
-
-
-	pr = projected[1] / projected[3];
-
-	if ( pr > 1.0f ) {
-		pr = 1.0f;
-	}
-
-	return pr;
+    return ( pr > 1.0f ) ? 1.0f : pr;
 }
 
 /*
@@ -86,96 +67,102 @@ R_CullModel
 =============
 */
 static int R_CullModel( mdcHeader_t *header, trRefEntity_t *ent ) {
-	vec3_t bounds[2];
-	md3Frame_t  *oldFrame, *newFrame;
-	int i;
-	qboolean cullSphere;    //----(SA)	added
-	float radScale;
+    vec3_t bounds[2];
+    md3Frame_t  *oldFrame, *newFrame;
+    qboolean cullSphere;
+    float radScale;
 
-	cullSphere = qtrue;
+    cullSphere = qtrue;
 
+    // Compute frame pointers matching MDC layout offsets
+    newFrame = ( md3Frame_t * )( ( byte * ) header + header->ofsFrames ) + ent->e.frame;
+    oldFrame = ( md3Frame_t * )( ( byte * ) header + header->ofsFrames ) + ent->e.oldframe;
 
+    radScale = 1.0f;
 
-	// compute frame pointers
-	newFrame = ( md3Frame_t * )( ( byte * ) header + header->ofsFrames ) + ent->e.frame;
-	oldFrame = ( md3Frame_t * )( ( byte * ) header + header->ofsFrames ) + ent->e.oldframe;
+    if ( ent->e.nonNormalizedAxes ) {
+        cullSphere = qfalse;
+    }
 
-	radScale = 1.0f;
+    if ( cullSphere ) {
+        if ( ent->e.frame == ent->e.oldframe ) {
+            switch ( R_CullLocalPointAndRadius( newFrame->localOrigin, newFrame->radius * radScale ) )
+            {
+            case CULL_OUT:
+                tr.pc.c_sphere_cull_md3_out++;
+                return CULL_OUT;
 
-	if ( ent->e.nonNormalizedAxes ) {
-		cullSphere = qfalse;    // by defalut, cull bounding sphere ONLY if this is not an upscaled entity
+            case CULL_IN:
+                tr.pc.c_sphere_cull_md3_in++;
+                return CULL_IN;
 
-		// but allow the radius to be scaled if specified
-//		if(ent->e.reFlags & REFLAG_SCALEDSPHERECULL) {
-//			cullSphere = qtrue;
-//			radScale = ent->e.radius;
-//		}
-	}
+            case CULL_CLIP:
+                tr.pc.c_sphere_cull_md3_clip++;
+                break;
+            }
+        } else
+        {
+            int sphereCull, sphereCullB;
 
-	if ( cullSphere ) {
-		if ( ent->e.frame == ent->e.oldframe ) {
-			switch ( R_CullLocalPointAndRadius( newFrame->localOrigin, newFrame->radius * radScale ) )
-			{
-			case CULL_OUT:
-				tr.pc.c_sphere_cull_md3_out++;
-				return CULL_OUT;
+            sphereCull  = R_CullLocalPointAndRadius( newFrame->localOrigin, newFrame->radius * radScale );
+            if ( newFrame == oldFrame ) {
+                sphereCullB = sphereCull;
+            } else {
+                sphereCullB = R_CullLocalPointAndRadius( oldFrame->localOrigin, oldFrame->radius * radScale );
+            }
 
-			case CULL_IN:
-				tr.pc.c_sphere_cull_md3_in++;
-				return CULL_IN;
+            if ( sphereCull == sphereCullB ) {
+                if ( sphereCull == CULL_OUT ) {
+                    tr.pc.c_sphere_cull_md3_out++;
+                    return CULL_OUT;
+                } else if ( sphereCull == CULL_IN )   {
+                    tr.pc.c_sphere_cull_md3_in++;
+                    return CULL_IN;
+                } else
+                {
+                    tr.pc.c_sphere_cull_md3_clip++;
+                }
+            }
+        }
+    }
 
-			case CULL_CLIP:
-				tr.pc.c_sphere_cull_md3_clip++;
-				break;
-			}
-		} else
-		{
-			int sphereCull, sphereCullB;
+#ifndef Q3_VM
+    // Vectorized Bounding Box Union via SSE min/max for MDC buffers
+    __m128 v_old_min = _mm_loadu_ps( oldFrame->bounds[0] );
+    __m128 v_new_min = _mm_loadu_ps( newFrame->bounds[0] );
+    __m128 v_old_max = _mm_loadu_ps( oldFrame->bounds[1] );
+    __m128 v_new_max = _mm_loadu_ps( newFrame->bounds[1] );
+    __m128 v_scale   = _mm_set1_ps( radScale );
 
-			sphereCull  = R_CullLocalPointAndRadius( newFrame->localOrigin, newFrame->radius * radScale );
-			if ( newFrame == oldFrame ) {
-				sphereCullB = sphereCull;
-			} else {
-				sphereCullB = R_CullLocalPointAndRadius( oldFrame->localOrigin, oldFrame->radius * radScale );
-			}
+    __m128 v_res_min = _mm_mul_ps( _mm_min_ps( v_old_min, v_new_min ), v_scale );
+    __m128 v_res_max = _mm_mul_ps( _mm_max_ps( v_old_max, v_new_max ), v_scale );
 
-			if ( sphereCull == sphereCullB ) {
-				if ( sphereCull == CULL_OUT ) {
-					tr.pc.c_sphere_cull_md3_out++;
-					return CULL_OUT;
-				} else if ( sphereCull == CULL_IN )   {
-					tr.pc.c_sphere_cull_md3_in++;
-					return CULL_IN;
-				} else
-				{
-					tr.pc.c_sphere_cull_md3_clip++;
-				}
-			}
-		}
-	}
+    _mm_storeu_ps( bounds[0], v_res_min );
+    _mm_storeu_ps( bounds[1], v_res_max );
+#else
+    int i;
+    for ( i = 0 ; i < 3 ; i++ ) {
+        bounds[0][i] = oldFrame->bounds[0][i] < newFrame->bounds[0][i] ? oldFrame->bounds[0][i] : newFrame->bounds[0][i];
+        bounds[1][i] = oldFrame->bounds[1][i] > newFrame->bounds[1][i] ? oldFrame->bounds[1][i] : newFrame->bounds[1][i];
 
-	// calculate a bounding box in the current coordinate system
-	for ( i = 0 ; i < 3 ; i++ ) {
-		bounds[0][i] = oldFrame->bounds[0][i] < newFrame->bounds[0][i] ? oldFrame->bounds[0][i] : newFrame->bounds[0][i];
-		bounds[1][i] = oldFrame->bounds[1][i] > newFrame->bounds[1][i] ? oldFrame->bounds[1][i] : newFrame->bounds[1][i];
+        bounds[0][i] *= radScale;
+        bounds[1][i] *= radScale;
+    }
+#endif
 
-		bounds[0][i] *= radScale;   //----(SA)	added
-		bounds[1][i] *= radScale;   //----(SA)	added
-	}
-
-	switch ( R_CullLocalBox( bounds ) )
-	{
-	case CULL_IN:
-		tr.pc.c_box_cull_md3_in++;
-		return CULL_IN;
-	case CULL_CLIP:
-		tr.pc.c_box_cull_md3_clip++;
-		return CULL_CLIP;
-	case CULL_OUT:
-	default:
-		tr.pc.c_box_cull_md3_out++;
-		return CULL_OUT;
-	}
+    switch ( R_CullLocalBox( bounds ) )
+    {
+    case CULL_IN:
+        tr.pc.c_box_cull_md3_in++;
+        return CULL_IN;
+    case CULL_CLIP:
+        tr.pc.c_box_cull_md3_clip++;
+        return CULL_CLIP;
+    case CULL_OUT:
+    default:
+        tr.pc.c_box_cull_md3_out++;
+        return CULL_OUT;
+    }
 }
 
 
@@ -322,34 +309,64 @@ R_ComputeFogNum
 =================
 */
 static int R_ComputeFogNum( mdcHeader_t *header, trRefEntity_t *ent ) {
-	int i, j;
-	fog_t           *fog;
-	md3Frame_t      *md3Frame;
-	vec3_t localOrigin;
+    int i;
+    fog_t           *fog;
+    md3Frame_t      *md3Frame;
+    vec3_t localOrigin;
 
-	if ( tr.refdef.rdflags & RDF_NOWORLDMODEL ) {
-		return 0;
-	}
+    if ( tr.refdef.rdflags & RDF_NOWORLDMODEL ) {
+        return 0;
+    }
 
-	// FIXME: non-normalized axis issues
-	md3Frame = ( md3Frame_t * )( ( byte * ) header + header->ofsFrames ) + ent->e.frame;
-	VectorAdd( ent->e.origin, md3Frame->localOrigin, localOrigin );
-	for ( i = 1 ; i < tr.world->numfogs ; i++ ) {
-		fog = &tr.world->fogs[i];
-		for ( j = 0 ; j < 3 ; j++ ) {
-			if ( localOrigin[j] - md3Frame->radius >= fog->bounds[1][j] ) {
-				break;
-			}
-			if ( localOrigin[j] + md3Frame->radius <= fog->bounds[0][j] ) {
-				break;
-			}
-		}
-		if ( j == 3 ) {
-			return i;
-		}
-	}
+    md3Frame = ( md3Frame_t * )( ( byte * ) header + header->ofsFrames ) + ent->e.frame;
+    VectorAdd( ent->e.origin, md3Frame->localOrigin, localOrigin );
 
-	return 0;
+#ifndef Q3_VM
+    // Parallel Spatial Intersection: Load 3D coordinates and broadcast the radius scalar
+    __m128 v_origin = _mm_loadu_ps( localOrigin );
+    __m128 v_radius = _mm_set1_ps( md3Frame->radius );
+
+    // Compute the outer extremes of the object's bounding sphere footprint
+    __m128 v_sphere_min = _mm_sub_ps( v_origin, v_radius );
+    __m128 v_sphere_max = _mm_add_ps( v_origin, v_radius );
+
+    for ( i = 1 ; i < tr.world->numfogs ; i++ ) {
+        fog = &tr.world->fogs[i];
+
+        // Load fog volume AABB box constraints
+        __m128 v_fog_max = _mm_loadu_ps( fog->bounds[1] );
+        __m128 v_fog_min = _mm_loadu_ps( fog->bounds[0] );
+
+        // Evaluate out-of-bounds conditions completely branchlessly
+        __m128 v_out_hi = _mm_cmpge_ps( v_sphere_min, v_fog_max );
+        __m128 v_out_lo = _mm_cmple_ps( v_sphere_max, v_fog_min );
+        __m128 v_outside = _mm_or_ps( v_out_hi, v_out_lo );
+
+        int mask = _mm_movemask_ps( v_outside ) & 7;
+
+        if ( mask == 0 ) {
+            return i;
+        }
+    }
+#else
+    for ( i = 1 ; i < tr.world->numfogs ; i++ ) {
+        fog = &tr.world->fogs[i];
+        int j;
+        for ( j = 0 ; j < 3 ; j++ ) {
+            if ( localOrigin[j] - md3Frame->radius >= fog->bounds[1][j] ) {
+                break;
+            }
+            if ( localOrigin[j] + md3Frame->radius <= fog->bounds[0][j] ) {
+                break;
+            }
+        }
+        if ( j == 3 ) {
+            return i;
+        }
+    }
+#endif
+
+    return 0;
 }
 
 /*
