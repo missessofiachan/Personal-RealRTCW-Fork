@@ -710,6 +710,8 @@ void    FS_FCloseFile( fileHandle_t f );
 
 long	FS_ReadFileDir(const char *qpath, void *searchPath, qboolean unpure, void **buffer);
 long	FS_ReadFile(const char *qpath, void **buffer);
+// like FS_ReadFile, but doesn't use the search path, only the specified directory
+void *FS_LoadFileAsync( const char *qpath, int *outLen );
 // returns the length of the file
 // a null buffer will just return the file length without loading
 // as a quick check for existance. -1 length == not present
@@ -1041,6 +1043,10 @@ void CL_MapLoading( void );
 // will be cleared, so the client must shutdown cgame, ui, and
 // the renderer
 
+
+void CM_TriggerMapStream( const char *mapName );
+void CM_PollStreamerHandshake( void );
+void CM_StreamMap_f( void );
 void    CL_ForwardCommandToServer( const char *string );
 // adds the current command line as a clc_clientCommand to the client message.
 // things like godmode, noclip, etc, are commands directed to the server,

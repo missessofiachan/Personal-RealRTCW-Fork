@@ -68,7 +68,10 @@ typedef struct {
 	// EndRegistration will draw a tiny polygon with each texture, forcing
 	// them to be loaded into card memory
 	void ( *EndRegistration )( void );
-
+	/// 
+	void ( *LoadWorldMapFromBuffer )( void *bufferData, int bufferLen );
+	void ( *SwapWorldModel )( void *newWorldPointer );
+	void ( *R_SwapWorldModel )( void *newWorldPointer );
 	// a scene is built up by calls to R_ClearScene and the various R_Add functions.
 	// Nothing is drawn until R_RenderScene is called.
 	void ( *ClearScene )( void );

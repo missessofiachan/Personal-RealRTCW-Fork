@@ -205,9 +205,14 @@ cmodel_t    *CM_ClipHandleToModel( clipHandle_t handle );
 qboolean CM_BoundsIntersect( const vec3_t mins, const vec3_t maxs, const vec3_t mins2, const vec3_t maxs2 );
 qboolean CM_BoundsIntersectPoint( const vec3_t mins, const vec3_t maxs, const vec3_t point );
 
+// --- SEAMLESS STREAMING EXTENSION ---
+void CM_LoadMapFromBuffer( const char *name, void *bufferData, int bufferLen, qboolean clientload, int *checksum );
+// -------------------------------------
 // cm_patch.c
 
 struct patchCollide_s   *CM_GeneratePatchCollide( int width, int height, vec3_t *points );
 void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc );
 qboolean CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc );
 void CM_ClearLevelPatches( void );
+
+

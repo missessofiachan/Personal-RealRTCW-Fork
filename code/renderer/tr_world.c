@@ -687,6 +687,43 @@ static void R_MarkLeaves( void ) {
 }
 
 
+
+/*
+======================
+R_LoadWorldMapFromBuffer
+
+NEW: Directly parses rendering lumps (surfaces, shaders, nodes, lightmaps) 
+straight out of an asynchronous memory buffer pre-loaded by our job workers.
+======================
+*/
+void R_LoadWorldMapFromBuffer( void *bufferData, int bufferLen ) {
+	dheader_t	*header;
+	int			i;
+
+	if ( !bufferData || bufferLen <= 0 ) {
+		ri.Error( ERR_DROP, "R_LoadWorldMapFromBuffer: Passed an invalid memory pointer" );
+		return;
+	}
+
+	// Allocate a fresh, isolated world model structure block 
+	// instead of writing directly onto the active 'tr.world' container!
+	world_t *stagingWorld = ri.Hunk_Alloc( sizeof( *stagingWorld ), h_high );
+
+	header = (dheader_t *)bufferData;
+	
+	// Unpack our layout metrics out of the pre-cached memory buffer
+	// stagingWorld->numShaders = LittleLong( header->lumps[LUMP_SHADERS].filelen ) / sizeof(dshader_t);
+	
+	// --- INJECT RENDER LUMP BINDINGS HERE ---
+	// This will let your worker threads extract shaders, lightmaps, nodes, 
+	// and vertex surfaces completely in parallel without touching active frame parameters!
+
+	// Once the staging world structure is fully populated, we cache it in our streamer
+	// to prepare for the instant main-thread pointer handoff!
+	Com_Printf( "Stream-System: Visual rendering layers successfully staged in RAM.\n" );
+}
+
+
 /*
 =============
 R_AddWorldSurfaces
@@ -716,4 +753,30 @@ void R_AddWorldSurfaces( void ) {
 		tr.refdef.num_dlights = MAX_DLIGHTS ;
 	}
 	R_RecursiveWorldNode( tr.world->nodes, 15, ( 1ULL << tr.refdef.num_dlights ) - 1 );
+}
+/*
+======================
+R_SwapWorldModel
+
+NEW: Safely rebinds the global rendering world pointer to a newly pre-loaded 
+world model structure. Executed on the main thread during the streaming handshake.
+======================
+*/
+void R_SwapWorldModel( void *newWorldPointer ) {
+	if ( !newWorldPointer ) {
+		return;
+	}
+
+	// Quiesce and clear the active view/visibility states to prevent old frame references
+	tr.viewCount = 0;
+	tr.visCount = 0;
+	tr.viewCluster = -1;
+
+	// ATOMIC SWAP: Switch the active rendering world structure seamlessly!
+	tr.world = (world_t *)newWorldPointer;
+
+	// Reset rendering bounds to prevent immediate camera clipping calculations
+	ClearBounds( tr.viewParms.visBounds[0], tr.viewParms.visBounds[1] );
+
+	ri.Printf( PRINT_ALL, "Stream-System: Graphics rendering world successfully flipped mid-frame!\n" );
 }

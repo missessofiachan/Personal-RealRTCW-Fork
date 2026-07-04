@@ -5406,3 +5406,105 @@ const char *FS_GetCurrentGameDir(void)
 	return com_basegame->string;
 }
 
+
+/*
+======================================================================================
+FS_LoadFileAsync
+
+Thread-safe asynchronous file loader engineered for background job system workers. 
+Bypasses the global handle structures (fsh) and linear hunk memory to prevent race 
+conditions. Memory must be explicitly deallocated using free() when complete.
+======================================================================================
+*/
+void *FS_LoadFileAsync(const char *qpath, int *outLen) {
+	searchpath_t *search;
+	long hash;
+	pack_t *pak;
+	fileInPack_t *pakFile;
+	void *buffer = NULL;
+
+	if (!qpath || !qpath[0]) {
+		if (outLen) *outLen = -1;
+		return NULL;
+	}
+
+	// Standardize delimiters to preserve path uniformity
+	if (qpath[0] == '/' || qpath[0] == '\\') {
+		qpath++;
+	}
+
+	// Escape guard against directory traversal bounds violations
+	if (strstr(qpath, "..") || strstr(qpath, "::")) {
+		if (outLen) *outLen = -1;
+		return NULL;
+	}
+
+	// Safely walk read-only search paths concurrently across threads
+	for (search = fs_searchpaths; search; search = search->next) {
+		
+		// Target file sits within a zipped PK3 container
+		if (search->pack) {
+			pak = search->pack;
+			hash = FS_HashFileName(qpath, pak->hashSize);
+			pakFile = pak->hashTable[hash];
+
+			while (pakFile != NULL) {
+				if (!FS_FilenameCompare(pakFile->name, qpath)) {
+					// Open an isolated, local zip context unique to this thread
+					unzFile uf = unzOpen(pak->pakFilename);
+					if (!uf) break;
+
+					if (unzSetOffset(uf, pakFile->pos) == UNZ_OK) {
+						if (unzOpenCurrentFile(uf) == UNZ_OK) {
+							buffer = malloc(pakFile->len + 1);
+							if (buffer) {
+								int readBytes = unzReadCurrentFile(uf, buffer, pakFile->len);
+								if (readBytes == (int)pakFile->len) {
+									((char *)buffer)[pakFile->len] = 0; // Seal string
+									if (outLen) *outLen = pakFile->len;
+								} else {
+									free(buffer);
+									buffer = NULL;
+								}
+							}
+							unzCloseCurrentFile(uf);
+						}
+					}
+					unzClose(uf);
+					if (buffer) return buffer; // Extraction successful!
+				}
+				pakFile = pakFile->next;
+			}
+		} 
+		// Target file is loose inside a flat operating system folder
+		else if (search->dir) {
+			directory_t *dir = search->dir;
+			char *netpath = FS_BuildOSPath(dir->path, dir->gamedir, qpath);
+			
+			FILE *f = fopen(netpath, "rb");
+			if (f) {
+				fseek(f, 0, SEEK_END);
+				long len = ftell(f);
+				fseek(f, 0, SEEK_SET);
+
+				if (len >= 0) {
+					buffer = malloc(len + 1);
+					if (buffer) {
+						if (fread(buffer, 1, len, f) == (size_t)len) {
+							((char *)buffer)[len] = 0; // Seal string
+							if (outLen) *outLen = len;
+						} else {
+							free(buffer);
+							buffer = NULL;
+						}
+					}
+				}
+				fclose(f);
+				if (buffer) return buffer; // Read successful!
+			}
+		}
+	}
+
+	if (outLen) *outLen = -1;
+	return NULL;
+}

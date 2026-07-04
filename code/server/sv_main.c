@@ -950,6 +950,8 @@ void SV_Frame( int msec ) {
 	int frameMsec;
 	int startTime;
 
+
+	
 	// the menu kills the server with this cvar
 	if ( sv_killserver->integer ) {
 		SV_Shutdown( "Server was killed" );
@@ -1010,7 +1012,9 @@ void SV_Frame( int msec ) {
 		Cbuf_AddText( "map_restart 0\n" );
 		return;
 	}
-
+// --- SEAMLESS LEVEL STREAMER HANDSHAKE POLL ---
+	CM_PollStreamerHandshake();
+	// ----------------------------------------------
 	// update infostrings if anything has been changed
 	if ( cvar_modifiedFlags & CVAR_SERVERINFO ) {
 		SV_SetConfigstring( CS_SERVERINFO, Cvar_InfoString( CVAR_SERVERINFO ) );

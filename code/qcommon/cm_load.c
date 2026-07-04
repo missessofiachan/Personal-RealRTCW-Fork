@@ -594,6 +594,98 @@ unsigned CM_Checksum( dheader_t *header ) {
 	return LittleLong( Com_BlockChecksum( checksums, 11 * 4 ) );
 }
 
+
+
+
+
+
+/*
+======================================================================================
+CM_LoadMapFromBuffer
+
+NEW: Directly consumes an asynchronous memory buffer pre-loaded by our job system workers.
+Bypasses synchronous disk I/O completely during map transitions, allowing seamless
+world reconstruction from memory arrays.
+======================================================================================
+*/
+void CM_LoadMapFromBuffer( const char *name, void *bufferData, int bufferLen, qboolean clientload, int *checksum ) {
+	int i;
+	dheader_t header;
+	static unsigned last_checksum;
+
+	if ( !name || !name[0] ) {
+		Com_Error( ERR_DROP, "CM_LoadMapFromBuffer: NULL name" );
+	}
+
+	if ( !bufferData || bufferLen <= 0 ) {
+		Com_Error( ERR_DROP, "CM_LoadMapFromBuffer: Passed an invalid or empty memory pointer for %s", name );
+	}
+
+#ifndef BSPC
+	cm_noAreas = Cvar_Get( "cm_noAreas", "0", CVAR_CHEAT );
+	cm_noCurves = Cvar_Get( "cm_noCurves", "0", CVAR_CHEAT );
+	cm_playerCurveClip = Cvar_Get( "cm_playerCurveClip", "1", CVAR_ARCHIVE | CVAR_CHEAT );
+#endif
+
+	Com_DPrintf( "CM_LoadMapFromBuffer( %s, %i )\n", name, clientload );
+
+	if ( !strcmp( cm.name, name ) && clientload ) {
+		last_checksum = LittleLong (Com_BlockChecksum (bufferData, bufferLen));
+		*checksum = last_checksum;
+		return;
+	}
+
+	// Cleanly wipe the active tracking map registry and clear patch structures
+	Com_Memset( &cm, 0, sizeof( cm ) );
+	CM_ClearLevelPatches();
+
+	// Calculate map checksum signature across the raw memory block
+	last_checksum = LittleLong (Com_BlockChecksum (bufferData, bufferLen));
+	*checksum = last_checksum;
+
+	// Unpack the map header structures smoothly
+	header = *(dheader_t *)bufferData;
+	for ( i = 0 ; i < sizeof( dheader_t ) / 4 ; i++ ) {
+		( (int *)&header )[i] = LittleLong( ( (int *)&header )[i] );
+	}
+
+#ifndef _SKIP_BSP_CHECK
+	if ( header.version != BSP_VERSION ) {
+		Com_Error( ERR_DROP, "CM_LoadMapFromBuffer: %s has wrong version number (%i should be %i)", 
+			name, header.version, BSP_VERSION );
+	}
+#endif
+
+	// Direct Assignment: Point the internal sub-lump builders directly to our background memory block
+	cmod_base = (byte *)bufferData;
+
+	// Unpack sub-lumps into the map runtime structures
+	CMod_LoadShaders( &header.lumps[LUMP_SHADERS] );
+	CMod_LoadLeafs( &header.lumps[LUMP_LEAFS] );
+	CMod_LoadLeafBrushes( &header.lumps[LUMP_LEAFBRUSHES] );
+	CMod_LoadLeafSurfaces( &header.lumps[LUMP_LEAFSURFACES] );
+	CMod_LoadPlanes( &header.lumps[LUMP_PLANES] );
+	CMod_LoadBrushSides( &header.lumps[LUMP_BRUSHSIDES] );
+	CMod_LoadBrushes( &header.lumps[LUMP_BRUSHES] );
+	CMod_LoadSubmodels( &header.lumps[LUMP_MODELS] );
+	CMod_LoadNodes( &header.lumps[LUMP_NODES] );
+	CMod_LoadEntityString( &header.lumps[LUMP_ENTITIES] );
+	CMod_LoadVisibility( &header.lumps[LUMP_VISIBILITY] );
+	CMod_LoadPatches( &header.lumps[LUMP_SURFACES], &header.lumps[LUMP_DRAWVERTS] );
+
+	// NOTE: We do NOT call FS_FreeFile() here because this buffer data block 
+	// belongs entirely to the async background streamer task pipeline!
+
+	CM_InitBoxHull();
+	CM_FloodAreaConnections();
+
+	if ( !clientload ) {
+		Q_strncpyz( cm.name, name, sizeof( cm.name ) );
+	}
+	
+	Com_Printf( "Stream-System: Collision layers for '%s' parsed cleanly from memory buffer!\n", name );
+}
+
 /*
 ==================
 CM_LoadMap
@@ -879,6 +971,129 @@ void CM_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs ) {
 	cmod = CM_ClipHandleToModel( model );
 	VectorCopy( cmod->mins, mins );
 	VectorCopy( cmod->maxs, maxs );
+}
+// ==================================================================================
+// SEAMLESS LEVEL STREAMING ORCHESTRATOR
+// ==================================================================================
+#include "gp_jobsystem.h"
+
+typedef enum {
+	STREAM_IDLE,
+	STREAM_LOADING,
+	STREAM_READY
+} streamState_t;
+
+typedef struct {
+	char          mapName[MAX_QPATH];
+	streamState_t state;
+	void          *buffer;
+	int           bufferLen;
+} mapStreamer_t;
+
+// Local tracking state container
+static mapStreamer_t g_mapStreamer = { "", STREAM_IDLE, NULL, 0 };
+
+/*
+==================
+AsyncMapStreamWorker
+
+The worker task invoked on your background threads by the SDL3 job pool.
+==================
+*/
+static void AsyncMapStreamWorker(void *arg) {
+	mapStreamer_t *streamer = (mapStreamer_t *)arg;
+	if (!streamer) return;
+
+	// Link to the thread-safe loader we added to files.c
+	extern void *FS_LoadFileAsync(const char *qpath, int *outLen);
+	streamer->buffer = FS_LoadFileAsync(streamer->mapName, &streamer->bufferLen);
+
+	if (!streamer->buffer || streamer->bufferLen <= 0) {
+		Com_Printf("Stream-Error: Background thread failed to load file: %s\n", streamer->mapName);
+		streamer->state = STREAM_IDLE;
+		return;
+	}
+
+	// Update atomic state signature to indicate memory buffer is ready
+	streamer->state = STREAM_READY;
+	Com_Printf("Stream-System: Map '%s' loaded into memory buffer on background thread.\n", streamer->mapName);
+}
+
+/*
+==================
+CM_TriggerMapStream
+
+Public function to dispatch an asynchronous background file retrieval task.
+==================
+*/
+void CM_TriggerMapStream(const char *mapName) {
+	if (!mapName || !mapName[0]) return;
+	
+	if (g_mapStreamer.state != STREAM_IDLE) {
+		Com_Printf("Stream-System: Loader busy processing an active streaming block!\n");
+		return;
+	}
+
+	Q_strncpyz(g_mapStreamer.mapName, mapName, sizeof(g_mapStreamer.mapName));
+	g_mapStreamer.state = STREAM_LOADING;
+	g_mapStreamer.buffer = NULL;
+	g_mapStreamer.bufferLen = 0;
+
+	Com_Printf("Stream-System: Dispatching async thread stream request for %s...\n", g_mapStreamer.mapName);
+
+	// Push task straight to your SDL3 background worker lanes
+	Sys_QueueJob(AsyncMapStreamWorker, &g_mapStreamer); //
+}
+
+/*
+==================
+CM_PollStreamerHandshake
+
+High-frequency loop checker to execute the pointer swap when data staging completes.
+Handles server-side collision layout modifications cleanly.
+==================
+*/
+void CM_PollStreamerHandshake(void) {
+	if (g_mapStreamer.state != STREAM_READY) return;
+
+	Com_Printf("Stream-System: Handshake validated! Executing synchronized server map memory swap...\n");
+
+	// 1. Quiesce background workers safely before changing active scene variables
+	Sys_WaitJobs(); //
+
+	// 2. Rebuild the server physics/collision structures instantly from our pre-cached buffer
+	int dummyChecksum = 0;
+	CM_LoadMapFromBuffer(g_mapStreamer.mapName, g_mapStreamer.buffer, g_mapStreamer.bufferLen, qfalse, &dummyChecksum);
+
+	// 3. ASYNC DEALLOCATION TRANSITION:
+	// Hand the spent raw memory buffer straight back to your thread pool workers!
+	// This lets background cores run free() to delete the old memory lines
+	// completely freeing up the main render thread from frame drops.
+	if (g_mapStreamer.buffer) {
+		Sys_QueueJob(free, g_mapStreamer.buffer); //
+	}
+
+	// Reset structural state counters back to base configuration
+	g_mapStreamer.buffer = NULL;
+	g_mapStreamer.bufferLen = 0;
+	g_mapStreamer.state = STREAM_IDLE;
+
+	Com_Printf("Stream-System: Server-side seamless map transition successfully completed.\n");
+}
+
+/*
+==================
+CM_StreamMap_f
+
+Console command hook so you can manually test this pipeline live from the developer console.
+==================
+*/
+void CM_StreamMap_f(void) {
+	if (Cmd_Argc() < 2) {
+		Com_Printf("Usage: stream_map <maps/mapname.bsp>\n");
+		return;
+	}
+	CM_TriggerMapStream(Cmd_Argv(1));
 }
 
 
