@@ -474,7 +474,7 @@ DIRECTORY SCANNING
 ==============================================================
 */
 
-#define MAX_FOUND_FILES 0x2000
+#define MAX_FOUND_FILES 0x5000
 
 /*
 ==============
