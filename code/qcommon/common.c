@@ -619,95 +619,117 @@ void Info_Print( const char *s ) {
 	}
 }
 
+#define Q_LOWERASCII(c) (((c) >= 'A' && (c) <= 'Z') ? ((c) | 0x20) : (c))
+#define Q_PATHCHAR(c, isPath) ((isPath) && ((c) == '\\' || (c) == ':') ? '/' : (c))
+
 /*
-============
-Com_StringContains
-============
+============================
+Com_StringContains_Internal
+============================
 */
-char *Com_StringContains( char *str1, char *str2, int casesensitive ) {
+static char *Com_StringContains_Internal( const char *str1, const char *str2, qboolean casesensitive, qboolean isPath ) {
+	int len1 = 0;
+	int len2 = 0;
+	const char *p;
 	int len, i, j;
 
-	len = strlen( str1 ) - strlen( str2 );
+	for ( p = str1; *p; p++ ) len1++;
+	for ( p = str2; *p; p++ ) len2++;
+	len = len1 - len2;
+
 	for ( i = 0; i <= len; i++, str1++ ) {
 		for ( j = 0; str2[j]; j++ ) {
+			char c1 = Q_PATHCHAR( str1[j], isPath );
+			char c2 = Q_PATHCHAR( str2[j], isPath );
+			
 			if ( casesensitive ) {
-				if ( str1[j] != str2[j] ) {
+				if ( c1 != c2 ) {
 					break;
 				}
 			} else {
-				if ( toupper( str1[j] ) != toupper( str2[j] ) ) {
+				if ( Q_LOWERASCII( c1 ) != Q_LOWERASCII( c2 ) ) {
 					break;
 				}
 			}
 		}
 		if ( !str2[j] ) {
-			return str1;
+			return (char *)str1;
 		}
 	}
 	return NULL;
 }
-
 /*
-============
-Com_Filter
-============
+====================
+Com_Filter_Internal
+====================
 */
-int Com_Filter( char *filter, char *name, int casesensitive ) {
+static int Com_Filter_Internal( const char *filter, const char *name, qboolean casesensitive, qboolean isPath ) {
 	char buf[MAX_TOKEN_CHARS];
-	char *ptr;
+	const char *ptr;
 	int i, found;
 
 	while ( *filter ) {
 		if ( *filter == '*' ) {
 			filter++;
-			for ( i = 0; *filter; i++ ) {
+			for ( i = 0; *filter && i < MAX_TOKEN_CHARS - 1; i++ ) {
 				if ( *filter == '*' || *filter == '?' ) {
 					break;
 				}
-				buf[i] = *filter;
+				buf[i] = Q_PATHCHAR( *filter, isPath );
 				filter++;
 			}
 			buf[i] = '\0';
-			if ( strlen( buf ) ) {
-				ptr = Com_StringContains( name, buf, casesensitive );
+			if ( buf[0] != '\0' ) {
+				ptr = Com_StringContains_Internal( name, buf, casesensitive, isPath );
 				if ( !ptr ) {
 					return qfalse;
 				}
-				name = ptr + strlen( buf );
+				int matchLen = 0;
+				while ( buf[matchLen] ) matchLen++;
+				name = ptr + matchLen;
 			}
-		} else if ( *filter == '?' )      {
+		} else if ( *filter == '?' ) {
+			if ( !*name ) {
+				return qfalse;
+			}
 			filter++;
 			name++;
-		} else if ( *filter == '[' && *( filter + 1 ) == '[' )           {
-			filter++;
-		} else if ( *filter == '[' )      {
+		} else if ( *filter == '[' && *( filter + 1 ) == '[' ) {
+			char c1 = Q_PATHCHAR( *name, isPath );
+			char c2 = Q_PATHCHAR( *(filter + 1), isPath );
+			if ( casesensitive ) {
+				if ( c1 != c2 ) return qfalse;
+			} else {
+				if ( Q_LOWERASCII( c1 ) != Q_LOWERASCII( c2 ) ) return qfalse;
+			}
+			filter += 2;
+			name++;
+		} else if ( *filter == '[' ) {
 			filter++;
 			found = qfalse;
+			char nameChar = Q_PATHCHAR( *name, isPath );
+			if ( !casesensitive ) nameChar = Q_LOWERASCII( nameChar );
+
 			while ( *filter && !found ) {
 				if ( *filter == ']' && *( filter + 1 ) != ']' ) {
 					break;
 				}
 				if ( *( filter + 1 ) == '-' && *( filter + 2 ) && ( *( filter + 2 ) != ']' || *( filter + 3 ) == ']' ) ) {
-					if ( casesensitive ) {
-						if ( *name >= *filter && *name <= *( filter + 2 ) ) {
-							found = qtrue;
-						}
-					} else {
-						if ( toupper( *name ) >= toupper( *filter ) &&
-							 toupper( *name ) <= toupper( *( filter + 2 ) ) ) {
-							found = qtrue;
-						}
+					char fMin = Q_PATHCHAR( *filter, isPath );
+					char fMax = Q_PATHCHAR( *(filter + 2), isPath );
+					if ( !casesensitive ) {
+						fMin = Q_LOWERASCII( fMin );
+						fMax = Q_LOWERASCII( fMax );
+					}
+					if ( nameChar >= fMin && nameChar <= fMax ) {
+						found = qtrue;
 					}
 					filter += 3;
 				} else {
-					if ( casesensitive ) {
-						if ( *filter == *name ) {
-							found = qtrue;
-						}
-					} else {
-						if ( toupper( *filter ) == toupper( *name ) ) {
-							found = qtrue;
-						}
+					char fChar = Q_PATHCHAR( *filter, isPath );
+					if ( !casesensitive ) fChar = Q_LOWERASCII( fChar );
+					if ( fChar == nameChar ) {
+						found = qtrue;
 					}
 					filter++;
 				}
@@ -724,12 +746,14 @@ int Com_Filter( char *filter, char *name, int casesensitive ) {
 			filter++;
 			name++;
 		} else {
+			char c1 = Q_PATHCHAR( *filter, isPath );
+			char c2 = Q_PATHCHAR( *name, isPath );
 			if ( casesensitive ) {
-				if ( *filter != *name ) {
+				if ( c1 != c2 ) {
 					return qfalse;
 				}
 			} else {
-				if ( toupper( *filter ) != toupper( *name ) ) {
+				if ( Q_LOWERASCII( c1 ) != Q_LOWERASCII( c2 ) ) {
 					return qfalse;
 				}
 			}
@@ -737,7 +761,30 @@ int Com_Filter( char *filter, char *name, int casesensitive ) {
 			name++;
 		}
 	}
+	
+	if ( *name && *(filter - 1) != '*' ) {
+		return qfalse;
+	}
+	
 	return qtrue;
+}
+
+/*
+============
+Com_StringContains
+============
+*/
+char *Com_StringContains( char *str1, char *str2, int casesensitive ) {
+	return Com_StringContains_Internal( str1, str2, (qboolean)casesensitive, qfalse );
+}
+
+/*
+============
+Com_Filter
+============
+*/
+int Com_Filter( char *filter, char *name, int casesensitive ) {
+	return Com_Filter_Internal( filter, name, (qboolean)casesensitive, qfalse );
 }
 
 /*
@@ -746,27 +793,7 @@ Com_FilterPath
 ============
 */
 int Com_FilterPath( char *filter, char *name, int casesensitive ) {
-	int i;
-	char new_filter[MAX_QPATH];
-	char new_name[MAX_QPATH];
-
-	for ( i = 0; i < MAX_QPATH - 1 && filter[i]; i++ ) {
-		if ( filter[i] == '\\' || filter[i] == ':' ) {
-			new_filter[i] = '/';
-		} else {
-			new_filter[i] = filter[i];
-		}
-	}
-	new_filter[i] = '\0';
-	for ( i = 0; i < MAX_QPATH - 1 && name[i]; i++ ) {
-		if ( name[i] == '\\' || name[i] == ':' ) {
-			new_name[i] = '/';
-		} else {
-			new_name[i] = name[i];
-		}
-	}
-	new_name[i] = '\0';
-	return Com_Filter( new_filter, new_name, casesensitive );
+	return Com_Filter_Internal( filter, name, (qboolean)casesensitive, qtrue );
 }
 
 /*
@@ -801,14 +828,205 @@ int Com_RealTime( qtime_t *qtime ) {
 /*
 ==============================================================================
 
-						ZONE MEMORY ALLOCATION
-
-==============================================================================
+ELITE MULTI-SEGMENT ZONE MEMORY ALLOCATION
+				(Thread-Safe, SIMD-Aligned, Canary Guarded)==============================================================================
 
   The old zone is gone, mallocs replaced it. To keep the widespread code changes down to a bare minimum
   Z_Malloc and Z_Free still work.
 */
 
+#define USE_MULTI_SEGMENT
+
+#ifdef USE_MULTI_SEGMENT
+
+
+#define ZONE_MAGIC            0x4d5a4f4e   // 'MZON'
+#define ZONE_SEGMENT_SIZE     (2 * 1024 * 1024) // 2MB dynamic sub-blocks
+#define ZONE_BUCKETS          64
+#define ZONE_ALIGNMENT        64           // Perfect 64-byte CPU Cache Line alignment
+#define ZONE_REDZONE_SIZE     16           // 16-byte buffer overflow deadband
+#define ZONE_CANARY_PATTERN   0xDEADBEEF   // Overflow detection stamp
+#define ZONE_POISON_PATTERN   0xAA         // Use-After-Free extermination byte
+
+// Cross-platform ultra-fast Spinlock primitive for your Particle Job System
+#ifdef _WIN32
+#include <windows.h>
+typedef volatile LONG zoneLock_t;
+#define ZONE_LOCK_INIT(l)     (*(l) = 0)
+#define ZONE_LOCK(l)          while(InterlockedExchange((l), 1) == 1) { Sleep(0); }
+#define ZONE_UNLOCK(l)        InterlockedExchange((l), 0)
+#else
+#include <sched.h>
+typedef volatile int zoneLock_t;
+#define ZONE_LOCK_INIT(l)     (*(l) = 0)
+#define ZONE_LOCK(l)          while(__sync_lock_test_and_set((l), 1)) { sched_yield(); }
+#define ZONE_UNLOCK(l)        __sync_lock_release((l))
+#endif
+
+// Main allocation tracking header
+typedef struct zoneBlock_s {
+	int                 magic;
+	int                 size;          // Total size including tracking header
+	struct zoneBlock_s *next;          // Contiguous physical next block
+	struct zoneBlock_s *prev;          // Contiguous physical prev block
+	struct zoneBlock_s *nextFree;      // Next block in size category bucket
+	struct zoneBlock_s *prevFree;      // Prev block in size category bucket
+	qboolean            isFree;
+	int                 pad;           // Ensures structure bounds align nicely
+} zoneBlock_t;
+
+// Massive memory pages requested from OS
+typedef struct zoneSegment_s {
+	struct zoneSegment_s *next;
+	int                   size;
+} zoneSegment_t;
+
+// Global Allocator State
+static zoneBlock_t    *zoneBuckets[ZONE_BUCKETS];
+static zoneSegment_t  *zoneSegments = NULL;
+static zoneLock_t      g_zoneSpinlock = 0;
+
+#endif // USE_MULTI_SEGMENT
+
+static int s_zoneTotal = 0;
+
+/*
+========================
+Com_InitZoneMemory
+========================
+*/
+void Com_InitZoneMemory( void ) {
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK_INIT(&g_zoneSpinlock);
+	ZONE_LOCK(&g_zoneSpinlock);
+	
+	Com_Memset( zoneBuckets, 0, sizeof( zoneBuckets ) );
+	zoneSegments = NULL;
+	
+	ZONE_UNLOCK(&g_zoneSpinlock);
+#endif
+	s_zoneTotal = 0;
+}
+
+#ifdef USE_MULTI_SEGMENT
+
+#define ZONE_HEADER_SIZE      64 // Keeps user data perfectly cache-line aligned
+
+/*
+========================
+Zone_BucketIndex
+========================
+*/
+static int Zone_BucketIndex( int size ) {
+	int index = size >> 4; // Categorize by 16-byte steps
+	if ( index >= ZONE_BUCKETS ) {
+		index = ZONE_BUCKETS - 1;
+	}
+	return index;
+}
+
+/*
+========================
+Zone_LinkFree
+========================
+*/
+static void Zone_LinkFree( zoneBlock_t *block ) {
+	int index = Zone_BucketIndex( block->size );
+	
+	block->isFree = qtrue;
+	block->nextFree = zoneBuckets[index];
+	block->prevFree = NULL;
+	
+	if ( zoneBuckets[index] ) {
+		zoneBuckets[index]->prevFree = block;
+	}
+	zoneBuckets[index] = block;
+}
+
+/*
+========================
+Zone_UnlinkFree
+========================
+*/
+static void Zone_UnlinkFree( zoneBlock_t *block ) {
+	int index = Zone_BucketIndex( block->size );
+	
+	block->isFree = qfalse;
+	
+	if ( block->nextFree ) {
+		block->nextFree->prevFree = block->prevFree;
+	}
+	if ( block->prevFree ) {
+		block->prevFree->nextFree = block->nextFree;
+	} else {
+		zoneBuckets[index] = block->nextFree;
+	}
+}
+
+/*
+========================
+Zone_IsManagedPointer
+========================
+*/
+static qboolean Zone_IsManagedPointer( void *ptr ) {
+	zoneSegment_t *seg;
+	byte *p = (byte *)ptr;
+
+	// O(N) traversal through active 2MB pages (extremely quick lookup)
+	for ( seg = zoneSegments; seg; seg = seg->next ) {
+		if ( p >= (byte *)seg && p < (byte *)seg + seg->size ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+/*
+========================
+Zone_AllocSegment
+========================
+*/
+static void Zone_AllocSegment( int minimumSize ) {
+	int size = ZONE_SEGMENT_SIZE;
+	int segmentHeaderSize;
+	zoneSegment_t *seg;
+	zoneBlock_t *block;
+	
+	segmentHeaderSize = (sizeof(zoneSegment_t) + (ZONE_ALIGNMENT - 1)) & ~(ZONE_ALIGNMENT - 1);
+
+	if ( minimumSize > size - segmentHeaderSize - ZONE_HEADER_SIZE ) {
+		size = minimumSize + segmentHeaderSize + ZONE_HEADER_SIZE + ZONE_REDZONE_SIZE + 64;
+	}
+	
+	// Request cache-aligned page from the Operating System
+#ifdef _WIN32
+	seg = (zoneSegment_t *)_aligned_malloc( size, ZONE_ALIGNMENT );
+#else
+	if ( posix_memalign( (void **)&seg, ZONE_ALIGNMENT, size ) != 0 ) {
+		seg = NULL;
+	}
+#endif
+
+	if ( !seg ) {
+		Com_Error( ERR_FATAL, "Zone_AllocSegment: OS kernel rejected allocation of %i bytes", size );
+	}
+	
+	seg->size = size;
+	seg->next = zoneSegments;
+	zoneSegments = seg;
+	s_zoneTotal += size;
+	
+	// Anchor the master block inside the segment payload
+	block = (zoneBlock_t *)( (byte *)seg + segmentHeaderSize );
+	block->magic = ZONE_MAGIC;
+	block->size = size - segmentHeaderSize;
+	block->next = NULL;
+	block->prev = NULL;
+	
+	Zone_LinkFree( block );
+}
+
+#endif // USE_MULTI_SEGMENT
 
 /*
 ========================
@@ -816,20 +1034,175 @@ Z_Free
 ========================
 */
 void Z_Free( void *ptr ) {
-	free( ptr );
-}
+	zoneBlock_t *block;
+	byte *canaryCheck;
+	int i;
 
+	if ( !ptr ) {
+		return;
+	}
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_zoneSpinlock );
+
+	// Hybrid Check: If this pointer wasn't created by our sub-allocator, route it to system free()
+	if ( !Zone_IsManagedPointer( ptr ) ) {
+		ZONE_UNLOCK( &g_zoneSpinlock );
+		free( ptr );
+		return;
+	}
+
+	block = (zoneBlock_t *)( (byte *)ptr - ZONE_HEADER_SIZE );
+	
+	// Validation Guard 1: Magic Key Assurance
+	if ( block->magic != ZONE_MAGIC ) {
+		ZONE_UNLOCK( &g_zoneSpinlock );
+		Com_Error( ERR_FATAL, "Z_Free: Structural Corruption! Block magic modified mid-lifecycle." );
+	}
+	
+	if ( block->isFree ) {
+		ZONE_UNLOCK( &g_zoneSpinlock );
+		return; // Silently absorb double-free calls from unpatched scripts
+	}
+
+	// Validation Guard 2: Canary Buffer Overflow Check
+	canaryCheck = (byte *)ptr + ( block->size - ZONE_HEADER_SIZE - ZONE_REDZONE_SIZE );
+	for ( i = 0; i < ZONE_REDZONE_SIZE; i++ ) {
+		if ( canaryCheck[i] != ( (ZONE_CANARY_PATTERN >> ( (i & 3) * 8 )) & 0xFF ) ) {
+			ZONE_UNLOCK( &g_zoneSpinlock );
+			Com_Error( ERR_FATAL, "Z_Free: Buffer Overflow Detected! Redzone canary footprint crushed at %p", ptr );
+		}
+	}
+
+	// Active Memory Poisoning: Clean out old states to trap Use-After-Free bugs
+	Com_Memset( ptr, ZONE_POISON_PATTERN, block->size - ZONE_HEADER_SIZE - ZONE_REDZONE_SIZE );
+
+	// Consolidation: Merge forward physical blocks
+	if ( block->next && block->next->isFree ) {
+		zoneBlock_t *nextPhys = block->next;
+		Zone_UnlinkFree( nextPhys );
+		block->size += nextPhys->size;
+		block->next = nextPhys->next;
+		if ( nextPhys->next ) {
+			nextPhys->next->prev = block;
+		}
+	}
+
+	// Consolidation: Merge backward physical blocks
+	if ( block->prev && block->prev->isFree ) {
+		zoneBlock_t *prevPhys = block->prev;
+		Zone_UnlinkFree( prevPhys );
+		prevPhys->size += block->size;
+		prevPhys->next = block->next;
+		if ( block->next ) {
+			block->next->prev = prevPhys;
+		}
+		block = prevPhys; 
+	}
+
+	Zone_LinkFree( block );
+	ZONE_UNLOCK( &g_zoneSpinlock );
+#else
+	free( ptr );
+#endif
+}
 
 /*
-================
+========================
 Z_Malloc
-================
+========================
 */
 void *Z_Malloc( int size ) {
-	void *buf = malloc( size );
-	Com_Memset( buf, 0, size );
-	return buf;
+	void *rawResult = NULL;
+#ifdef USE_MULTI_SEGMENT
+	int requestedSize = size;
+	int totalNeededSize;
+	int bucketStart;
+	int i;
+	zoneBlock_t *block = NULL;
+	byte *canaryTarget;
+
+	if ( size <= 0 ) {
+		Com_Error( ERR_FATAL, "Z_Malloc: Allocation bounds error with size %i", size );
+	}
+
+	// Compute aligned allocation boundaries
+	totalNeededSize = ZONE_HEADER_SIZE + size + ZONE_REDZONE_SIZE;
+	totalNeededSize = ( totalNeededSize + (ZONE_ALIGNMENT - 1) ) & ~(ZONE_ALIGNMENT - 1);
+
+	ZONE_LOCK( &g_zoneSpinlock );
+
+	bucketStart = Zone_BucketIndex( totalNeededSize );
+	
+	for ( i = bucketStart; i < ZONE_BUCKETS; i++ ) {
+		for ( block = zoneBuckets[i]; block; block = block->nextFree ) {
+			if ( block->size >= totalNeededSize ) {
+				break;
+			}
+		}
+		if ( block ) {
+			break;
+		}
+	}
+
+	if ( !block ) {
+		Zone_AllocSegment( totalNeededSize );
+		// Query the maximum bucket index where the newly added segment resides
+		block = zoneBuckets[ZONE_BUCKETS - 1];
+		while ( block && block->size < totalNeededSize ) {
+			block = block->nextFree;
+		}
+		if ( !block ) {
+			ZONE_UNLOCK( &g_zoneSpinlock );
+			Com_Error( ERR_FATAL, "Z_Malloc: Critical system block routing failure." );
+		}
+	}
+
+	Zone_UnlinkFree( block );
+
+	// Fragment Splitting: Subdivide heavily oversized blocks to recycle space
+	if ( block->size - totalNeededSize >= ZONE_HEADER_SIZE + 64 ) {
+		zoneBlock_t *remainder = (zoneBlock_t *)( (byte *)block + totalNeededSize );
+		remainder->magic = ZONE_MAGIC;
+		remainder->size = block->size - totalNeededSize;
+		remainder->isFree = qfalse;
+		remainder->next = block->next;
+		remainder->prev = block;
+		
+		if ( block->next ) {
+			block->next->prev = remainder;
+		}
+		block->next = remainder;
+		block->size = totalNeededSize;
+		
+		Zone_LinkFree( remainder );
+	}
+
+	rawResult = (void *)( (byte *)block + ZONE_HEADER_SIZE );
+
+	// Load the canary tracking bits into our redzone boundary
+	canaryTarget = (byte *)rawResult + ( block->size - ZONE_HEADER_SIZE - ZONE_REDZONE_SIZE );
+	for ( i = 0; i < ZONE_REDZONE_SIZE; i++ ) {
+		canaryTarget[i] = ( (ZONE_CANARY_PATTERN >> ( (i & 3) * 8 )) & 0xFF );
+	}
+
+	Com_Memset( rawResult, 0, requestedSize );
+
+	ZONE_UNLOCK( &g_zoneSpinlock );
+	return rawResult;
+#else
+	rawResult = malloc( size );
+	if ( !rawResult ) {
+		Com_Error( ERR_FATAL, "Z_Malloc: Allocation bounds error for %i bytes", size );
+	}
+	Com_Memset( rawResult, 0, size );
+	return rawResult;
+#endif
 }
+
+
+
+
 
 #if 0
 /*
@@ -958,6 +1331,9 @@ static byte    *s_hunkData = NULL;
 static int s_hunkTotal;
 
 static int s_zoneTotal;
+
+// Atomic Spinlock dedicated purely to securing Hunk state changes across worker threads
+static zoneLock_t g_hunkSpinlock = 0;
 //static	int		s_smallZoneTotal; // TTimo: unused
 
 
@@ -968,6 +1344,10 @@ Com_Meminfo_f
 */
 void Com_Meminfo_f( void ) {
 	int unused;
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
 
 	Com_Printf( "%8i bytes total hunk\n", s_hunkTotal );
 	Com_Printf( "%8i bytes total zone\n", s_zoneTotal );
@@ -997,7 +1377,9 @@ void Com_Meminfo_f( void ) {
 	Com_Printf( "%8i unused highwater\n", unused );
 	Com_Printf( "\n" );
 
-	//Com_Printf( "        %i number of tagged renderer allocations\n", g_numTaggedAllocs);
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 }
 
 /*
@@ -1013,32 +1395,35 @@ void Com_TouchMemory( void ) {
 	unsigned sum;
 
 	start = Sys_Milliseconds();
-
 	sum = 0;
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	j = hunk_low.permanent >> 2;
-	for ( i = 0 ; i < j ; i += 64 ) {         // only need to touch each page
+	for ( i = 0 ; i < j ; i += 16 ) { // Adjusted stride to 16 ints (64 bytes) to step clean cache lines
 		sum += ( (int *)s_hunkData )[i];
 	}
 
 	i = ( s_hunkTotal - hunk_high.permanent ) >> 2;
 	j = hunk_high.permanent >> 2;
-	for (  ; i < j ; i += 64 ) {          // only need to touch each page
+	for (  ; i < j ; i += 16 ) {
 		sum += ( (int *)s_hunkData )[i];
 	}
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
+
 	end = Sys_Milliseconds();
-
-	Com_Printf( "Com_TouchMemory: %i msec\n", end - start );
+	Com_Printf( "Com_TouchMemory: %i msec (diagnostic checksum: %u)\n", end - start, sum );
 }
 
 
 
 
-void Com_InitZoneMemory( void ) {
-	//memset(g_taggedAllocations, 0, sizeof(g_taggedAllocations));
-	//g_numTaggedAllocs = 0;
-}
+
 
 /*
 =================
@@ -1057,6 +1442,11 @@ void Hunk_Log( void ) {
 	numBlocks = 0;
 	Com_sprintf( buf, sizeof( buf ), "\r\n================\r\nHunk log\r\n================\r\n" );
 	FS_Write( buf, strlen( buf ), logfile );
+	
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	for ( block = hunkblocks ; block; block = block->next ) {
 #ifdef HUNK_DEBUG
 		Com_sprintf( buf, sizeof( buf ), "size = %8d: %s, line: %d (%s)\r\n", block->size, block->file, block->line, block->label );
@@ -1065,6 +1455,11 @@ void Hunk_Log( void ) {
 		size += block->size;
 		numBlocks++;
 	}
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
+
 	Com_sprintf( buf, sizeof( buf ), "%d Hunk memory\r\n", size );
 	FS_Write( buf, strlen( buf ), logfile );
 	Com_sprintf( buf, sizeof( buf ), "%d hunk blocks\r\n", numBlocks );
@@ -1084,6 +1479,11 @@ void Hunk_SmallLog( void ) {
 	if ( !logfile || !FS_Initialized() ) {
 		return;
 	}
+	
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	for ( block = hunkblocks ; block; block = block->next ) {
 		block->printed = qfalse;
 	}
@@ -1114,6 +1514,11 @@ void Hunk_SmallLog( void ) {
 		size += block->size;
 		numBlocks++;
 	}
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
+
 	Com_sprintf( buf, sizeof( buf ), "%d Hunk memory\r\n", size );
 	FS_Write( buf, strlen( buf ), logfile );
 	Com_sprintf( buf, sizeof( buf ), "%d hunk blocks\r\n", numBlocks );
@@ -1130,18 +1535,12 @@ void Com_InitHunkMemory( void ) {
 	int nMinAlloc;
 	char *pMsg = NULL;
 
-	// make sure the file system has allocated and "not" freed any temp blocks
-	// this allows the config and product id files ( journal files too ) to be loaded
-	// by the file system without redunant routines in the file system utilizing different
-	// memory systems
 	if ( FS_LoadStack() != 0 ) {
 		Com_Error( ERR_FATAL, "Hunk initialization failed. File system load stack not zero" );
 	}
 
-	// allocate the stack based hunk allocator
 	cv = Cvar_Get( "com_hunkMegs", DEF_COMHUNKMEGS_S, CVAR_LATCH | CVAR_ARCHIVE );
 
-	// if we are not dedicated min allocation is 56, otherwise min is 1
 	if ( com_dedicated && com_dedicated->integer ) {
 		nMinAlloc = MIN_DEDICATED_COMHUNKMEGS;
 		pMsg = "Minimum com_hunkMegs for a dedicated server is %i, allocating %i megs.\n";
@@ -1157,13 +1556,17 @@ void Com_InitHunkMemory( void ) {
 		s_hunkTotal = cv->integer * 1024 * 1024;
 	}
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK_INIT( &g_hunkSpinlock );
+#endif
 
-	s_hunkData = malloc( s_hunkTotal + 31 );
+	s_hunkData = malloc( s_hunkTotal + 63 ); // Pad extra for 64-byte boundary adjustments
 	if ( !s_hunkData ) {
 		Com_Error( ERR_FATAL, "Hunk data failed to allocate %i megs", s_hunkTotal / ( 1024 * 1024 ) );
 	}
-	// cacheline align
-	s_hunkData = (byte *) ( ( (intptr_t)s_hunkData + 31 ) & ~31 );
+	
+	// Force perfect 64-byte cacheline alignment on the base pointer allocation row
+	s_hunkData = (byte *) ( ( (intptr_t)s_hunkData + 63 ) & ~63 );
 	Hunk_Clear();
 
 	Cmd_AddCommand( "meminfo", Com_Meminfo_f );
@@ -1181,8 +1584,16 @@ Hunk_MemoryRemaining
 int Hunk_MemoryRemaining( void ) {
 	int low, high;
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	low = hunk_low.permanent > hunk_low.temp ? hunk_low.permanent : hunk_low.temp;
 	high = hunk_high.permanent > hunk_high.temp ? hunk_high.permanent : hunk_high.temp;
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 
 	return s_hunkTotal - ( low + high );
 }
@@ -1190,14 +1601,22 @@ int Hunk_MemoryRemaining( void ) {
 /*
 ===================
 Hunk_SetMark
-
-The server calls this after the level and game VM have been loaded
 ===================
 */
 void Hunk_SetMark( void ) {
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	hunk_low.mark = hunk_low.permanent;
 	hunk_high.mark = hunk_high.permanent;
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 }
+
+
 
 /*
 =================
@@ -1207,8 +1626,16 @@ The client calls this before starting a vid_restart or snd_restart
 =================
 */
 void Hunk_ClearToMark( void ) {
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	hunk_low.permanent = hunk_low.temp = hunk_low.mark;
 	hunk_high.permanent = hunk_high.temp = hunk_high.mark;
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 }
 
 /*
@@ -1217,10 +1644,17 @@ Hunk_CheckMark
 =================
 */
 qboolean Hunk_CheckMark( void ) {
-	if ( hunk_low.mark || hunk_high.mark ) {
-		return qtrue;
-	}
-	return qfalse;
+	qboolean res;
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
+	res = ( hunk_low.mark || hunk_high.mark ) ? qtrue : qfalse;
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
+	return res;
 }
 
 void CL_ShutdownCGame( void );
@@ -1235,7 +1669,6 @@ The server calls this before shutting down or loading a new map
 =================
 */
 void Hunk_Clear( void ) {
-
 #ifndef DEDICATED
 	CL_ShutdownCGame();
 	CL_ShutdownUI();
@@ -1244,6 +1677,11 @@ void Hunk_Clear( void ) {
 #ifndef DEDICATED
 	CIN_CloseAllVideos();
 #endif
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	hunk_low.mark = 0;
 	hunk_low.permanent = 0;
 	hunk_low.temp = 0;
@@ -1259,22 +1697,24 @@ void Hunk_Clear( void ) {
 
 	Cvar_Set( "com_hunkused", va( "%i", hunk_low.permanent + hunk_high.permanent ) );
 	Com_Printf( "Hunk_Clear: reset the hunk ok\n" );
-	VM_Clear(); // (SA) FIXME:TODO: was commented out in wolf
+	VM_Clear(); 
+	
 #ifdef HUNK_DEBUG
 	hunkblocks = NULL;
+#endif
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
 #endif
 }
 
 static void Hunk_SwapBanks( void ) {
 	hunkUsed_t  *swap;
 
-	// can't swap banks if there is any temp already allocated
 	if ( hunk_temp->temp != hunk_temp->permanent ) {
 		return;
 	}
 
-	// if we have a larger highwater mark on this side, start making
-	// our permanent allocations here and use the other side for temp
 	if ( hunk_temp->tempHighwater - hunk_temp->permanent >
 		 hunk_permanent->tempHighwater - hunk_permanent->permanent ) {
 		swap = hunk_temp;
@@ -1301,22 +1741,31 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 		Com_Error( ERR_FATAL, "Hunk_Alloc: Hunk memory system not initialized" );
 	}
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	Hunk_SwapBanks();
 
 #ifdef HUNK_DEBUG
 	size += sizeof( hunkblock_t );
 #endif
 
-	// round to cacheline
-	size = ( size + 31 ) & ~31;
+	// Overhaul Alignment: Round allocations perfectly up to 64-byte Cache-Lines
+	size = ( size + 63 ) & ~63;
 
 	if ( hunk_low.temp + hunk_high.temp + size > s_hunkTotal ) {
 #ifdef HUNK_DEBUG
 		Hunk_Log();
 		Hunk_SmallLog();
-
+#ifdef USE_MULTI_SEGMENT
+		ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)", size, file, line, label);
 #else
+#ifdef USE_MULTI_SEGMENT
+		ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i", size);
 #endif
 	}
@@ -1331,7 +1780,7 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 
 	hunk_permanent->temp = hunk_permanent->permanent;
 
-	memset( buf, 0, size );
+	Com_Memset( buf, 0, size );
 
 #ifdef HUNK_DEBUG
 	{
@@ -1347,10 +1796,14 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 		buf = ( (byte *) buf ) + sizeof( hunkblock_t );
 	}
 #endif
-	// Ridah, update the com_hunkused cvar in increments, so we don't update it too often, since this cvar call isn't very efficent
+
 	if ( ( hunk_low.permanent + hunk_high.permanent ) > com_hunkused->integer + 10000 ) {
 		Cvar_Set( "com_hunkused", va( "%i", hunk_low.permanent + hunk_high.permanent ) );
 	}
+
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 
 	return buf;
 }
@@ -1358,29 +1811,31 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 /*
 =================
 Hunk_AllocateTempMemory
-
-This is used by the file loading system.
-Multiple files can be loaded in temporary memory.
-When the files-in-use count reaches zero, all temp memory will be deleted
 =================
 */
 void *Hunk_AllocateTempMemory( int size ) {
 	void        *buf;
 	hunkHeader_t    *hdr;
+	int alignedHeaderSize;
 
-	// return a Z_Malloc'd block if the hunk has not been initialized
-	// this allows the config and product id files ( journal files too ) to be loaded
-	// by the file system without redunant routines in the file system utilizing different
-	// memory systems
 	if ( s_hunkData == NULL ) {
 		return Z_Malloc( size );
 	}
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 	Hunk_SwapBanks();
 
-	size = PAD(size, sizeof(intptr_t)) + sizeof( hunkHeader_t );
+	// Enforce 64-byte structural spacing inside temporary asset stacks
+	alignedHeaderSize = ( sizeof( hunkHeader_t ) + 63 ) & ~63;
+	size = ( ( size + 63 ) & ~63 ) + alignedHeaderSize;
 
 	if ( hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal ) {
+#ifdef USE_MULTI_SEGMENT
+		ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size );
 	}
 
@@ -1397,15 +1852,17 @@ void *Hunk_AllocateTempMemory( int size ) {
 	}
 
 	hdr = (hunkHeader_t *)buf;
-	buf = ( void * )( hdr + 1 );
+	buf = ( void * )( (byte *)hdr + alignedHeaderSize );
 
 	hdr->magic = HUNK_MAGIC;
 	hdr->size = size;
 
-	// don't bother clearing, because we are going to load a file over it
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
+
 	return buf;
 }
-
 
 /*
 ==================
@@ -1414,56 +1871,69 @@ Hunk_FreeTempMemory
 */
 void Hunk_FreeTempMemory( void *buf ) {
 	hunkHeader_t    *hdr;
+	int alignedHeaderSize;
 
-	// free with Z_Free if the hunk has not been initialized
-	// this allows the config and product id files ( journal files too ) to be loaded
-	// by the file system without redunant routines in the file system utilizing different
-	// memory systems
 	if ( s_hunkData == NULL ) {
 		Z_Free( buf );
 		return;
 	}
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK( &g_hunkSpinlock );
+#endif
 
-	hdr = ( (hunkHeader_t *)buf ) - 1;
+	alignedHeaderSize = ( sizeof( hunkHeader_t ) + 63 ) & ~63;
+	hdr = (hunkHeader_t *)( (byte *)buf - alignedHeaderSize );
+	
 	if ( hdr->magic != HUNK_MAGIC ) {
-		Com_Error( ERR_FATAL, "Hunk_FreeTempMemory: bad magic" );
+#ifdef USE_MULTI_SEGMENT
+		ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
+		Com_Error( ERR_FATAL, "Hunk_FreeTempMemory: bad magic verification key" );
 	}
 
 	hdr->magic = HUNK_FREE_MAGIC;
 
-	// this only works if the files are freed in stack order,
-	// otherwise the memory will stay around until Hunk_ClearTempMemory
 	if ( hunk_temp == &hunk_low ) {
 		if ( hdr == ( void * )( s_hunkData + hunk_temp->temp - hdr->size ) ) {
 			hunk_temp->temp -= hdr->size;
 		} else {
-			Com_Printf( "Hunk_FreeTempMemory: not the final block\n" );
+			Com_Printf( "Hunk_FreeTempMemory: block freed out of stack sequence order\n" );
 		}
 	} else {
 		if ( hdr == ( void * )( s_hunkData + s_hunkTotal - hunk_temp->temp ) ) {
 			hunk_temp->temp -= hdr->size;
 		} else {
-			Com_Printf( "Hunk_FreeTempMemory: not the final block\n" );
+			Com_Printf( "Hunk_FreeTempMemory: block freed out of stack sequence order\n" );
 		}
 	}
-}
 
+#ifdef USE_MULTI_SEGMENT
+	ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
+}
 
 /*
 =================
 Hunk_ClearTempMemory
 
-The temp space is no longer needed.  If we have left more
-touched but unused memory on this side, have future
-permanent allocs use this side.
+The temp space is no longer needed. Reset the temp watermark back to permanent boundaries.
 =================
 */
 void Hunk_ClearTempMemory( void ) {
 	if ( s_hunkData != NULL ) {
+#ifdef USE_MULTI_SEGMENT
+		ZONE_LOCK( &g_hunkSpinlock );
+#endif
+
 		hunk_temp->temp = hunk_temp->permanent;
+
+#ifdef USE_MULTI_SEGMENT
+		ZONE_UNLOCK( &g_hunkSpinlock );
+#endif
 	}
 }
+
 
 /*
 ===================================================================
@@ -1475,10 +1945,6 @@ journaled file
 ===================================================================
 */
 
-#define MAX_PUSHED_EVENTS              1024 
-static int com_pushedEventsHead = 0;
-static int com_pushedEventsTail = 0;
-static sysEvent_t com_pushedEvents[MAX_PUSHED_EVENTS];
 
 /*
 =================
@@ -1525,6 +1991,14 @@ static sysEvent_t  eventQueue[ MAX_QUEUED_EVENTS ];
 static int         eventHead = 0;
 static int         eventTail = 0;
 
+#define MAX_PUSHED_EVENTS              1024 
+static int com_pushedEventsHead = 0;
+static int com_pushedEventsTail = 0;
+static sysEvent_t com_pushedEvents[MAX_PUSHED_EVENTS];
+
+// Spinlock dedicated purely to securing the engine input stream across worker threads
+static zoneLock_t g_eventQueueSpinlock = 0;
+
 /*
 ================
 Com_QueueEvent
@@ -1532,13 +2006,21 @@ Com_QueueEvent
 A time of 0 will get the current time
 Ptr should either be null, or point to a block of data that can
 be freed by the game later.
+/*
+================
+Com_QueueEvent
+
+Thread-safe, high-precision event injection
 ================
 */
 void Com_QueueEvent( int time, sysEventType_t type, int value, int value2, int ptrLength, void *ptr )
 {
 	sysEvent_t  *ev;
 
-	// combine mouse movement with previous mouse event
+	// Acquire event loop atomic lock
+	ZONE_LOCK( &g_eventQueueSpinlock );
+
+	// High-FPS Optimization: Coalesce raw mouse input streams inside the queue to prevent frame stutter
 	if ( type == SE_MOUSE && eventHead != eventTail )
 	{
 		ev = &eventQueue[ ( eventHead + MAX_QUEUED_EVENTS - 1 ) & MASK_QUEUED_EVENTS ];
@@ -1547,24 +2029,32 @@ void Com_QueueEvent( int time, sysEventType_t type, int value, int value2, int p
 		{
 			ev->evValue += value;
 			ev->evValue2 += value2;
+			
+			// If pointer data was passed to a mouse event mistakenly, prevent memory leaks
+			if ( ptr ) {
+				ZONE_UNLOCK( &g_eventQueueSpinlock );
+				Z_Free( ptr );
+			} else {
+				ZONE_UNLOCK( &g_eventQueueSpinlock );
+			}
 			return;
 		}
 	}
 
 	ev = &eventQueue[ eventHead & MASK_QUEUED_EVENTS ];
 
+	// Handle Queue Overflows gracefully without leaking OS resources
 	if ( eventHead - eventTail >= MAX_QUEUED_EVENTS )
 	{
-		Com_Printf("Com_QueueEvent: overflow\n");
-		// we are discarding an event, but don't leak memory
+		Com_Printf("WARNING: Com_QueueEvent circular ring buffer overflow dropped event type %i\n", type);
 		if ( ev->evPtr )
 		{
-			Z_Free( ev->evPtr );
+			void *deadPtr = ev->evPtr;
+			ev->evPtr = NULL;
+			Z_Free( deadPtr );
 		}
 		eventTail++;
 	}
-
-	eventHead++;
 
 	if ( time == 0 )
 	{
@@ -1577,6 +2067,10 @@ void Com_QueueEvent( int time, sysEventType_t type, int value, int value2, int p
 	ev->evValue2 = value2;
 	ev->evPtrLength = ptrLength;
 	ev->evPtr = ptr;
+
+	eventHead++;
+
+	ZONE_UNLOCK( &g_eventQueueSpinlock );
 }
 
 /*
@@ -1590,37 +2084,51 @@ sysEvent_t Com_GetSystemEvent( void )
 	sysEvent_t  ev;
 	char        *s;
 
-	// return if we have data
+	ZONE_LOCK( &g_eventQueueSpinlock );
+
+	// If the queue contains unprocessed events, harvest them instantly
 	if ( eventHead > eventTail )
 	{
+		ev = eventQueue[ eventTail & MASK_QUEUED_EVENTS ];
+		eventQueue[ eventTail & MASK_QUEUED_EVENTS ].evPtr = NULL; // Clear ownership
 		eventTail++;
-		return eventQueue[ ( eventTail - 1 ) & MASK_QUEUED_EVENTS ];
+		ZONE_UNLOCK( &g_eventQueueSpinlock );
+		return ev;
 	}
 
-	// check for console commands
+	ZONE_UNLOCK( &g_eventQueueSpinlock );
+
+	// Poll system console commands safely outside of the ring-buffer lock boundary
 	s = Sys_ConsoleInput();
 	if ( s )
 	{
 		char  *b;
 		int   len;
 
-		len = strlen( s ) + 1;
+		len = (int)strlen( s ) + 1;
 		b = Z_Malloc( len );
-		strcpy( b, s );
-		Com_QueueEvent( 0, SE_CONSOLE, 0, 0, len, b );
+		if ( b ) {
+			strcpy( b, s );
+			Com_QueueEvent( 0, SE_CONSOLE, 0, 0, len, b );
+		}
 	}
 
-	// return if we have data
+	ZONE_LOCK( &g_eventQueueSpinlock );
+
 	if ( eventHead > eventTail )
 	{
+		ev = eventQueue[ eventTail & MASK_QUEUED_EVENTS ];
+		eventQueue[ eventTail & MASK_QUEUED_EVENTS ].evPtr = NULL;
 		eventTail++;
-		return eventQueue[ ( eventTail - 1 ) & MASK_QUEUED_EVENTS ];
+		ZONE_UNLOCK( &g_eventQueueSpinlock );
+		return ev;
 	}
 
-	// create an empty event to return
-	memset( &ev, 0, sizeof( ev ) );
+	// Queue is totally dry, pass a clean fallback ticking event frame back
+	Com_Memset( &ev, 0, sizeof( ev ) );
 	ev.evTime = Sys_Milliseconds();
 
+	ZONE_UNLOCK( &g_eventQueueSpinlock );
 	return ev;
 }
 
@@ -1633,32 +2141,30 @@ sysEvent_t  Com_GetRealEvent( void ) {
 	int r;
 	sysEvent_t ev;
 
-	// either get an event from the system or the journal file
 	if ( com_journal->integer == 2 ) {
 		r = FS_Read( &ev, sizeof( ev ), com_journalFile );
 		if ( r != sizeof( ev ) ) {
-			Com_Error( ERR_FATAL, "Error reading from journal file" );
+			Com_Error( ERR_FATAL, "Com_GetRealEvent: Journal read streaming failure" );
 		}
 		if ( ev.evPtrLength ) {
 			ev.evPtr = Z_Malloc( ev.evPtrLength );
 			r = FS_Read( ev.evPtr, ev.evPtrLength, com_journalFile );
 			if ( r != ev.evPtrLength ) {
-				Com_Error( ERR_FATAL, "Error reading from journal file" );
+				Com_Error( ERR_FATAL, "Com_GetRealEvent: Journal payload read streaming failure" );
 			}
 		}
 	} else {
 		ev = Com_GetSystemEvent();
 
-		// write the journal value out if needed
 		if ( com_journal->integer == 1 ) {
 			r = FS_Write( &ev, sizeof( ev ), com_journalFile );
 			if ( r != sizeof( ev ) ) {
-				Com_Error( ERR_FATAL, "Error writing to journal file" );
+				Com_Error( ERR_FATAL, "Com_GetRealEvent: Journal write disk serialization failure" );
 			}
-			if ( ev.evPtrLength ) {
+			if ( ev.evPtrLength && ev.evPtr ) {
 				r = FS_Write( ev.evPtr, ev.evPtrLength, com_journalFile );
 				if ( r != ev.evPtrLength ) {
-					Com_Error( ERR_FATAL, "Error writing to journal file" );
+					Com_Error( ERR_FATAL, "Com_GetRealEvent: Journal payload write disk serialization failure" );
 				}
 			}
 		}
@@ -1667,23 +2173,18 @@ sysEvent_t  Com_GetRealEvent( void ) {
 	return ev;
 }
 
-
 /*
 =================
 Com_InitPushEvent
 =================
 */
-// bk001129 - added
 void Com_InitPushEvent( void ) {
-	// clear the static buffer array
-	// this requires SE_NONE to be accepted as a valid but NOP event
-	memset( com_pushedEvents, 0, sizeof( com_pushedEvents ) );
-	// reset counters while we are at it
-	// beware: GetEvent might still return an SE_NONE from the buffer
+	ZONE_LOCK( &g_eventQueueSpinlock );
+	Com_Memset( com_pushedEvents, 0, sizeof( com_pushedEvents ) );
 	com_pushedEventsHead = 0;
 	com_pushedEventsTail = 0;
+	ZONE_UNLOCK( &g_eventQueueSpinlock );
 }
-
 
 /*
 =================
@@ -1692,28 +2193,28 @@ Com_PushEvent
 */
 void Com_PushEvent( sysEvent_t *event ) {
 	sysEvent_t      *ev;
-	static int printedWarning = 0;
+
+	if ( !event ) {
+		return;
+	}
+
+	ZONE_LOCK( &g_eventQueueSpinlock );
 
 	ev = &com_pushedEvents[ com_pushedEventsHead & ( MAX_PUSHED_EVENTS - 1 ) ];
 
 	if ( com_pushedEventsHead - com_pushedEventsTail >= MAX_PUSHED_EVENTS ) {
-
-		// don't print the warning constantly, or it can give time for more...
-		if ( !printedWarning ) {
-			printedWarning = qtrue;
-			Com_Printf( "WARNING: Com_PushEvent overflow\n" );
-		}
-
 		if ( ev->evPtr ) {
-			Z_Free( ev->evPtr );
+			void *deadPtr = ev->evPtr;
+			ev->evPtr = NULL;
+			Z_Free( deadPtr );
 		}
 		com_pushedEventsTail++;
-	} else {
-		printedWarning = qfalse;
 	}
 
 	*ev = *event;
 	com_pushedEventsHead++;
+
+	ZONE_UNLOCK( &g_eventQueueSpinlock );
 }
 
 /*
@@ -1722,10 +2223,18 @@ Com_GetEvent
 =================
 */
 sysEvent_t  Com_GetEvent( void ) {
+	sysEvent_t ev;
+
+	ZONE_LOCK( &g_eventQueueSpinlock );
 	if ( com_pushedEventsHead > com_pushedEventsTail ) {
+		ev = com_pushedEvents[ com_pushedEventsTail & ( MAX_PUSHED_EVENTS - 1 ) ];
+		com_pushedEvents[ com_pushedEventsTail & ( MAX_PUSHED_EVENTS - 1 ) ].evPtr = NULL; // Relinquish ownership
 		com_pushedEventsTail++;
-		return com_pushedEvents[ ( com_pushedEventsTail - 1 ) & ( MAX_PUSHED_EVENTS - 1 ) ];
+		ZONE_UNLOCK( &g_eventQueueSpinlock );
+		return ev;
 	}
+	ZONE_UNLOCK( &g_eventQueueSpinlock );
+
 	return Com_GetRealEvent();
 }
 
@@ -2263,20 +2772,99 @@ static void Com_DetectSSE(void)
 
 #endif
 
+
+#ifdef USE_MULTI_SEGMENT
+
+// High-Performance 64-bit state for our Permuted Congruential Generator (PCG)
+static uint64_t g_pcgRandomState = 0x853c49e6748fea9bULL;
+static uint64_t g_pcgRandomInc   = 0xda3e39cb94b95bdbULL;
+static zoneLock_t g_randSpinlock   = 0;
+
+/*
+========================
+Com_PCGRand32
+
+Thread-safe, ultra-fast 32-bit random number generator
+Bypasses slow, lock-heavy standard library rand() implementation
+========================
+*/
+uint32_t Com_PCGRand32( void ) {
+	uint64_t oldState;
+	uint32_t xorshifted;
+	uint32_t rot;
+
+	ZONE_LOCK( &g_randSpinlock );
+
+	oldState = g_pcgRandomState;
+	// Advance internal state equation lineally
+	g_pcgRandomState = oldState * 6364136223846793005ULL + g_pcgRandomInc;
+
+	ZONE_UNLOCK( &g_randSpinlock );
+
+	// Calculate output permutation (XSH RR match)
+	xorshifted = (uint32_t)( ( ( oldState >> 18u ) ^ oldState ) >> 27u );
+	rot = (uint32_t)( oldState >> 59u );
+	
+	return ( xorshifted >> rot ) | ( xorshifted << ( ( -rot ) & 31u ) );
+}
+
+#endif // USE_MULTI_SEGMENT
+
 /*
 =================
 Com_InitRand
-Seed the random number generator, if possible with an OS supplied random seed.
-=================
+Seed the random number generator using high-entropy OS bytes if possible=================
 */
-static void Com_InitRand(void)
-{
-	unsigned int seed;
+static void Com_InitRand( void ) {
+	unsigned int seed1 = 0;
+	unsigned int seed2 = 0;
 
-	if(Sys_RandomBytes((byte *) &seed, sizeof(seed)))
-		srand(seed);
-	else
-		srand(time(NULL));
+#ifdef USE_MULTI_SEGMENT
+	ZONE_LOCK_INIT( &g_randSpinlock );
+#endif
+
+	if ( Sys_RandomBytes( (byte *)&seed1, sizeof( seed1 ) ) && 
+		 Sys_RandomBytes( (byte *)&seed2, sizeof( seed2 ) ) ) {
+#ifdef USE_MULTI_SEGMENT
+		g_pcgRandomState = ( (uint64_t)seed1 << 32 ) | seed2;
+#else
+		srand( seed1 );
+#endif
+	} else {
+#ifdef USE_MULTI_SEGMENT
+		g_pcgRandomState = (uint64_t)time( NULL ) ^ 0x543d9b4e3a2c1ULL;
+#else
+		srand( (unsigned int)time( NULL ) );
+#endif
+	}
+}
+
+/*
+==================
+Com_RandomBytes
+
+Fills a destination byte array with high-precision randomization
+==================
+*/
+void Com_RandomBytes( byte *string, int len ) {
+	int i;
+
+	if ( !string || len <= 0 ) {
+		return;
+	}
+
+	if ( Sys_RandomBytes( string, len ) ) {
+		return;
+	}
+
+	// Dynamic fallback sequence loop utilizing our lockless register shifter
+	for ( i = 0; i < len; i++ ) {
+#ifdef USE_MULTI_SEGMENT
+		string[i] = (byte)( Com_PCGRand32() % 256 );
+#else
+		string[i] = (byte)( rand() % 256 );
+#endif
+	}
 }
 
 /*
@@ -2719,13 +3307,13 @@ int Com_TimeVal(int minMsec)
 
 	timeVal = Sys_Milliseconds() - com_frameTime;
 
-	if(timeVal >= minMsec)
-		timeVal = 0;
-	else
-		timeVal = minMsec - timeVal;
-
-	return timeVal;
+	if ( timeVal >= minMsec ) {
+		return 0;
+	}
+	
+	return minMsec - timeVal;
 }
+
 
 /*
 =================
@@ -2733,10 +3321,10 @@ Com_Frame
 =================
 */
 void Com_Frame( void ) {
-
 	int msec, minMsec;
-	int		timeVal, timeValSV;
-	static int	lastTime = 0, bias = 0;
+	int timeVal, timeValSV;
+	static int lastTime = 0;
+	static int bias = 0;
 
 	int timeBeforeFirstEvents;
 	int timeBeforeServer;
@@ -2744,12 +3332,8 @@ void Com_Frame( void ) {
 	int timeBeforeClient;
 	int timeAfter;
 
-
-
-
-
 	if ( setjmp( abortframe ) ) {
-		return;         // an ERR_DROP was thrown
+		return;         // an ERR_DROP was thrown, gracefully intercept frame drop
 	}
 
 	timeBeforeFirstEvents = 0;
@@ -2758,67 +3342,69 @@ void Com_Frame( void ) {
 	timeBeforeClient = 0;
 	timeAfter = 0;
 
-
-	// write config file if anything changed
+	// Automatically serialize modified CVAR states to storage tables
 	Com_WriteConfiguration();
 
-	//
-	// main event loop
-	//
 	if ( com_speeds->integer ) {
 		timeBeforeFirstEvents = Sys_Milliseconds();
 	}
 
-	// Figure out how much time we have
-	if(!com_timedemo->integer)
-	{
-		if(com_dedicated->integer)
+	// Calculate target frame pacing budget
+	if ( !com_timedemo->integer ) {
+		if ( com_dedicated->integer ) {
 			minMsec = SV_FrameMsec();
-		else
-		{
-			if(com_minimized->integer && com_maxfpsMinimized->integer > 0)
+		} else {
+			if ( com_minimized->integer && com_maxfpsMinimized->integer > 0 ) {
 				minMsec = 1000 / com_maxfpsMinimized->integer;
-			else if(com_unfocused->integer && com_maxfpsUnfocused->integer > 0)
+			} else if ( com_unfocused->integer && com_maxfpsUnfocused->integer > 0 ) {
 				minMsec = 1000 / com_maxfpsUnfocused->integer;
-			else if(com_maxfps->integer > 0)
+			} else if ( com_maxfps->integer > 0 ) {
 				minMsec = 1000 / com_maxfps->integer;
-			else
+			} else {
 				minMsec = 1;
+			}
 			
 			timeVal = com_frameTime - lastTime;
 			bias += timeVal - minMsec;
 			
-			if(bias > minMsec)
+			if ( bias > minMsec ) {
 				bias = minMsec;
+			}
 			
-			// Adjust minMsec if previous frame took too long to render so
-			// that framerate is stable at the requested value.
+			// Compensate for physical scheduling offsets dynamically
 			minMsec -= bias;
 		}
-	}
-	else
+	} else {
 		minMsec = 1;
+	}
 
-	do
-	{
-		if(com_sv_running->integer)
-		{
+	// --- Dual-Stage Hybrid Frame Limiter Execution Block ---
+	while ( 1 ) {
+		if ( com_sv_running->integer ) {
 			timeValSV = SV_SendQueuedPackets();
-			
-			timeVal = Com_TimeVal(minMsec);
-
-			if(timeValSV < timeVal)
+			timeVal = Com_TimeVal( minMsec );
+			if ( timeValSV < timeVal ) {
 				timeVal = timeValSV;
+			}
+		} else {
+			timeVal = Com_TimeVal( minMsec );
 		}
-		else
-			timeVal = Com_TimeVal(minMsec);
-		
-		if(com_busyWait->integer || timeVal < 1)
-			NET_Sleep(0);
-		else
-			NET_Sleep(timeVal - 1);
-	} while(Com_TimeVal(minMsec));
 
+		// Frame budget achieved, break out instantly to render
+		if ( timeVal <= 0 ) {
+			break;
+		}
+
+		// STAGE 1: Coarse yielding if we are far ahead of our timeline (> 2ms)
+		if ( timeVal > 2 && !com_busyWait->integer ) {
+			NET_Sleep( 1 ); 
+		} else {
+			// STAGE 2: High-Precision active spin-wait loop once we enter the critical boundary zone
+			NET_Sleep( 0 ); 
+		}
+	}
+
+	// Update device controls and input streams safely
 	IN_Frame();
 	
 	lastTime = com_frameTime;
@@ -2828,30 +3414,21 @@ void Com_Frame( void ) {
 
 	Cbuf_Execute();
 
-	if (com_altivec->modified)
-	{
+	if ( com_altivec->modified ) {
 		Com_DetectAltivec();
 		com_altivec->modified = qfalse;
 	}
 
-	// mess with msec if needed
-	msec = Com_ModifyMsec(msec);
+	msec = Com_ModifyMsec( msec );
 
-	//
-	// server side
-	//
+	// --- Server Logic Step ---
 	if ( com_speeds->integer ) {
 		timeBeforeServer = Sys_Milliseconds();
 	}
 
 	SV_Frame( msec );
 
-	// if "dedicated" has been modified, start up
-	// or shut down the client system.
-	// Do this after the server may have started,
-	// but before the client tries to auto-connect
 	if ( com_dedicated->modified ) {
-		// get the latched value
 		Cvar_Get( "dedicated", "0", 0 );
 		com_dedicated->modified = qfalse;
 		if ( !com_dedicated->integer ) {
@@ -2861,35 +3438,26 @@ void Com_Frame( void ) {
 	}
 
 #ifndef DEDICATED
-	//
-	// client system
-	//
-
-	//
-	// run event loop a second time to get server to client packets
-	// without a frame of latency
-	//
+	// --- Client & Visual Logic Step ---
 	if ( com_speeds->integer ) {
-		timeBeforeEvents = Sys_Milliseconds ();
+		timeBeforeEvents = Sys_Milliseconds();
 	}
+	
 	Com_EventLoop();
-	Cbuf_Execute ();
+	Cbuf_Execute();
 
-	//
-	// client side
-	//
 	if ( com_speeds->integer ) {
-		timeBeforeClient = Sys_Milliseconds ();
+		timeBeforeClient = Sys_Milliseconds();
 	}
 
 	CL_Frame( msec );
 
 	if ( com_speeds->integer ) {
-		timeAfter = Sys_Milliseconds ();
+		timeAfter = Sys_Milliseconds();
 	}
 #else
 	if ( com_speeds->integer ) {
-		timeAfter = Sys_Milliseconds ();
+		timeAfter = Sys_Milliseconds();
 		timeBeforeEvents = timeAfter;
 		timeBeforeClient = timeAfter;
 	}
@@ -2897,9 +3465,7 @@ void Com_Frame( void ) {
 
 	NET_FlushPacketQueue();
 
-	//
-	// report timing information
-	//
+	// Timing Profiler diagnostics tracking
 	if ( com_speeds->integer ) {
 		int all, sv, ev, cl;
 
@@ -2914,11 +3480,7 @@ void Com_Frame( void ) {
 					com_frameNumber, all, sv, ev, cl, time_game, time_frontend, time_backend );
 	}
 
-	//
-	// trace optimization tracking
-	//
 	if ( com_showtrace->integer ) {
-
 		extern int c_traces, c_brush_traces, c_patch_traces;
 		extern int c_pointcontents;
 
@@ -2930,11 +3492,10 @@ void Com_Frame( void ) {
 		c_pointcontents = 0;
 	}
 
-	Com_ReadFromPipe( );
+	Com_ReadFromPipe();
 
 	com_frameNumber++;
 }
-
 /*
 =================
 Com_Shutdown
@@ -2963,7 +3524,6 @@ void Com_Shutdown( void ) {
 	Sys_ShutdownJobSystem();
 
 }
-
 
 
 /*
@@ -3238,23 +3798,7 @@ void Field_AutoComplete( field_t *field )
 }
 
 /*
-==================
-Com_RandomBytes
 
-fills string array with len random bytes, peferably from the OS randomizer
-==================
-*/
-void Com_RandomBytes( byte *string, int len )
-{
-	int i;
-
-	if( Sys_RandomBytes( string, len ) )
-		return;
-
-	Com_Printf( "Com_RandomBytes: using weak randomization\n" );
-	for( i = 0; i < len; i++ )
-		string[i] = (unsigned char)( rand() % 256 );
-}
 
 
 /*
