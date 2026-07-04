@@ -398,6 +398,13 @@ extern clientStatic_t cls;
 extern	char		cl_oldGame[MAX_QPATH];
 extern	qboolean	cl_oldGameSet;
 
+extern int bigchar_width;
+extern int bigchar_height;
+extern int smallchar_width;
+extern int smallchar_height;
+
+extern cvar_t *con_scale;
+
 //=============================================================================
 
 extern vm_t            *cgvm;   // interface to cgame dll or vm

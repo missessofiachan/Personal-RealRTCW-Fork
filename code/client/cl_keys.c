@@ -1342,7 +1342,7 @@ void Field_VariableSizeDraw( field_t *edit, int x, int y, int width, int size, q
 	str[ drawLen ] = 0;
 
 	// draw it
-	if ( size == SMALLCHAR_WIDTH ) {
+	if ( size == smallchar_width ) {
 		float color[4];
 
 		color[0] = color[1] = color[2] = color[3] = 1.0;
@@ -1366,7 +1366,7 @@ void Field_VariableSizeDraw( field_t *edit, int x, int y, int width, int size, q
 
 		i = drawLen - strlen( str );
 
-		if ( size == SMALLCHAR_WIDTH ) {
+		if ( size == smallchar_width ) {
 			SCR_DrawSmallChar( x + ( edit->cursor - prestep - i ) * size, y, cursorChar );
 		} else {
 			str[0] = cursorChar;
@@ -1378,11 +1378,11 @@ void Field_VariableSizeDraw( field_t *edit, int x, int y, int width, int size, q
 }
 
 void Field_Draw( field_t *edit, int x, int y, int width, qboolean showCursor, qboolean noColorEscape ) {
-	Field_VariableSizeDraw( edit, x, y, width, SMALLCHAR_WIDTH, showCursor, noColorEscape );
+	Field_VariableSizeDraw( edit, x, y, width, smallchar_width, showCursor, noColorEscape );
 }
 
 void Field_BigDraw( field_t *edit, int x, int y, int width, qboolean showCursor, qboolean noColorEscape ) {
-	Field_VariableSizeDraw( edit, x, y, width, BIGCHAR_WIDTH, showCursor, noColorEscape );
+	Field_VariableSizeDraw( edit, x, y, width, bigchar_width, showCursor, noColorEscape );
 }
 
 /*
