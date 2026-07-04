@@ -257,6 +257,7 @@ typedef struct {
     int                numfiles;
     int                hashSize;
 } cachedPack_t;
+static long FS_HashFileName( const char *fname, int hashSize );
 typedef struct fileInPack_s {
 	char                    *name;      // name of the file
 	unsigned long pos;                  // file info position in zip
@@ -503,6 +504,188 @@ static void FS_PrimeGateCvarsFromConfig(const char *dir)
         break;
     }
 }
+
+// Helper to grab OS filesystem stats seamlessly
+static qboolean FS_GetFileStats(const char *path, unsigned long long *size, unsigned long long *time) {
+#ifdef _WIN32
+    struct _stat64 st;
+    if (_stat64(path, &st) == 0) {
+        *size = st.st_size;
+        *time = st.st_mtime;
+        return qtrue;
+    }
+#else
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        *size = st.st_size;
+        *time = st.st_mtime;
+        return qtrue;
+    }
+#endif
+    return qfalse;
+}
+
+// Intercepts and attempts to quickly read matching entries from cache database
+static pack_t *FS_TryLoadFromCache(const char *zipfile, const char *basename, unzFile uf) {
+    if (!fs_homepath || !fs_homepath->string[0]) return NULL;
+
+    char *cachePath = FS_BuildOSPath(fs_homepath->string, "", "pk3cache.dat");
+    FILE *f = Sys_FOpen(cachePath, "rb");
+    if (!f) return NULL;
+
+    unsigned int magic, version, count;
+    if (fread(&magic, 4, 1, f) != 1 || fread(&version, 4, 1, f) != 1 || fread(&count, 4, 1, f) != 1) {
+        fclose(f);
+        return NULL;
+    }
+
+    if (magic != PK3_CACHE_MAGIC || version != PK3_CACHE_VERSION) {
+        fclose(f);
+        return NULL;
+    }
+
+    unsigned long long currentSize, currentTime;
+    if (!FS_GetFileStats(zipfile, &currentSize, &currentTime)) {
+        fclose(f);
+        return NULL;
+    }
+
+    cachedPack_t entry;
+    qboolean found = qfalse;
+
+    for (unsigned int i = 0; i < count; i++) {
+        if (fread(&entry, sizeof(cachedPack_t), 1, f) != 1) break;
+
+        if (Q_stricmp(entry.pakFilename, zipfile) == 0) {
+            if (entry.fileSize == currentSize && entry.fileTime == currentTime) {
+                found = qtrue;
+                break;
+            }
+        }
+        // Skip over this pack's file items if it doesn't match our target PK3
+        fseek(f, entry.numfiles * sizeof(cachedFile_t), SEEK_CUR);
+    }
+
+    if (!found) {
+        fclose(f);
+        return NULL;
+    }
+
+    // Measure string data block allocations
+    int totalNameLen = 0;
+    long fileDataPos = ftell(f);
+    
+    for (int i = 0; i < entry.numfiles; i++) {
+        cachedFile_t fileItem;
+        if (fread(&fileItem, sizeof(cachedFile_t), 1, f) != 1) break;
+        totalNameLen += strlen(fileItem.name) + 1;
+    }
+
+    fseek(f, fileDataPos, SEEK_SET);
+
+    // Reconstruct memory layout identical to what standard id Tech 3 logic expects
+    fileInPack_t *buildBuffer = Z_Malloc((entry.numfiles * sizeof(fileInPack_t)) + totalNameLen);
+    char *namePtr = ((char *)buildBuffer) + entry.numfiles * sizeof(fileInPack_t);
+
+    pack_t *pack = Z_Malloc(sizeof(pack_t) + entry.hashSize * sizeof(fileInPack_t *));
+    pack->hashSize = entry.hashSize;
+    pack->hashTable = (fileInPack_t **)(((char *)pack) + sizeof(pack_t));
+    for (int i = 0; i < pack->hashSize; i++) pack->hashTable[i] = NULL;
+
+    Q_strncpyz(pack->pakFilename, zipfile, sizeof(pack->pakFilename));
+    Q_strncpyz(pack->pakBasename, basename, sizeof(pack->pakBasename));
+    if (strlen(pack->pakBasename) > 4 && !Q_stricmp(pack->pakBasename + strlen(pack->pakBasename) - 4, ".pk3")) {
+        pack->pakBasename[strlen(pack->pakBasename) - 4] = 0;
+    }
+
+    pack->handle = uf;
+    pack->numfiles = entry.numfiles;
+    pack->checksum = entry.checksum;
+    pack->pure_checksum = entry.pure_checksum;
+
+    for (int i = 0; i < entry.numfiles; i++) {
+        cachedFile_t fileItem;
+        if (fread(&fileItem, sizeof(cachedFile_t), 1, f) != 1) break;
+
+        buildBuffer[i].name = namePtr;
+        strcpy(buildBuffer[i].name, fileItem.name);
+        namePtr += strlen(fileItem.name) + 1;
+
+        buildBuffer[i].pos = fileItem.pos;
+        buildBuffer[i].len = fileItem.len;
+
+        long hash = FS_HashFileName(fileItem.name, pack->hashSize);
+        buildBuffer[i].next = pack->hashTable[hash];
+        pack->hashTable[hash] = &buildBuffer[i];
+    }
+
+    fclose(f);
+    pack->buildBuffer = buildBuffer;
+    
+    if (fs_debug && fs_debug->integer) {
+        Com_Printf("fs-cache: loaded index instantly for %s\n", basename);
+    }
+    return pack;
+}
+
+// Writes out newly evaluated structural indexing onto disk cache file database
+static void FS_AppendToCache(pack_t *pack) {
+    if (!fs_homepath || !fs_homepath->string[0]) return;
+
+    unsigned long long fileSize, fileTime;
+    if (!FS_GetFileStats(pack->pakFilename, &fileSize, &fileTime)) return;
+
+    char *cachePath = FS_BuildOSPath(fs_homepath->string, "", "pk3cache.dat");
+    unsigned int count = 0;
+    
+    FILE *f = Sys_FOpen(cachePath, "r+b");
+    if (f) {
+        unsigned int magic, version;
+        if (fread(&magic, 4, 1, f) == 1 && fread(&version, 4, 1, f) == 1) {
+            if (magic == PK3_CACHE_MAGIC && version == PK3_CACHE_VERSION) {
+                if (fread(&count, 4, 1, f) != 1) count = 0;
+            }
+        }
+    } else {
+        f = Sys_FOpen(cachePath, "wb");
+        if (!f) return;
+        unsigned int magic = PK3_CACHE_MAGIC;
+        unsigned int version = PK3_CACHE_VERSION;
+        fwrite(&magic, 4, 1, f);
+        fwrite(&version, 4, 1, f);
+        fwrite(&count, 4, 1, f);
+    }
+
+    fseek(f, 0, SEEK_END);
+
+    cachedPack_t entry;
+    Q_strncpyz(entry.pakFilename, pack->pakFilename, sizeof(entry.pakFilename));
+    entry.fileSize = fileSize;
+    entry.fileTime = fileTime;
+    entry.checksum = pack->checksum;
+    entry.pure_checksum = pack->pure_checksum;
+    entry.numfiles = pack->numfiles;
+    entry.hashSize = pack->hashSize;
+
+    fwrite(&entry, sizeof(cachedPack_t), 1, f);
+
+    for (int i = 0; i < pack->numfiles; i++) {
+        cachedFile_t fileItem;
+        fileInPack_t *fb = &pack->buildBuffer[i];
+        Q_strncpyz(fileItem.name, fb->name, sizeof(fileItem.name));
+        fileItem.pos = fb->pos;
+        fileItem.len = fb->len;
+        fwrite(&fileItem, sizeof(cachedFile_t), 1, f);
+    }
+
+    count++;
+    fseek(f, 8, SEEK_SET);
+    fwrite(&count, 4, 1, f);
+    fclose(f);
+}
+
+
+
 
 
 // -------- gate: seen-dir cache (avoid re-parsing same physical folder) --------
@@ -2925,6 +3108,12 @@ static pack_t *FS_LoadZipFile(const char *zipfile, const char *basename)
 	}
 
 	fs_packFiles += gi.number_entry;
+	// --- CACHE INTERCEPT TRIGGER BEGIN ---
+	pack = FS_TryLoadFromCache(zipfile, basename, uf);
+	if (pack != NULL) {
+		return pack; // Cache found! Returning instantly.
+	}
+	// --- CACHE INTERCEPT TRIGGER END ---
 
 	len = 0;
 	unzGoToFirstFile( uf );
@@ -3000,6 +3189,9 @@ static pack_t *FS_LoadZipFile(const char *zipfile, const char *basename)
 	Z_Free( fs_headerLongs );
 
 	pack->buildBuffer = buildBuffer;
+	// --- APPEND MISSING PACK TO CACHE ENGINE BEGIN ---
+	FS_AppendToCache(pack);
+	// --- APPEND MISSING PACK TO CACHE ENGINE END ---
 	return pack;
 }
 
