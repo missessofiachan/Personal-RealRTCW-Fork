@@ -1,70 +1,109 @@
-# 🚀 RealRTCW Personal Fork: Engine Modernization & Performance Optimization
+# RealRTCW Personal Fork: Engine Modernization & Performance Optimization
 
-This repository contains a modernized, high-performance fork of the Return to Castle Wolfenstein single-player engine core. By aggressively eliminating legacy scalar constraints, flattening high-frequency conditional branches, optimizing virtual filesystem bottlenecks, and introducing real-time ray-traced audio architectures, this fork transforms the historical codebase into a highly responsive, SIMD-driven pipeline engineered for modern x86_64 systems.
+This repository is a modernized, high-performance fork of the Return to Castle Wolfenstein single-player engine. It optimizes the virtual filesystem, streamlines collision/map loading, upgrades the audio pipeline to OpenAL EFX/EAX, adds SIMD math speedups, and improves modern Linux/OS integration.
 
 ---
 
-## 🛠️ Performance & Architectural Modernizations
+## Performance & Architectural Improvements
 
-### 📦 The Virtual Filesystem Tier (`files.c`)
-* **PK3 Structural Index Cache (`pk3cache.dat`)**: Replaced expensive startup ZIP directory scans with an instant binary index cache database. Validated by OS file size and modification time stamps, it bypasses standard minizip traversal to accelerate mod asset loading by up to 100x.
-* **Intelligent Stream Seeking**: Overhauled the raw inflation seek pipeline. The engine calculates absolute offsets and jumps forward within the active `zlib` sliding window stream, completely eliminating the legacy penalty of full decompression rewinds.
-* **Elastic Hash Table Scalability**: Expanded `MAX_FILEHASH_SIZE` from `1024` to `32768`, drastically flattening hash collision chains down to near $O(1)$ lookup complexity for heavy total-conversion map modifications.
-* **256-Bit AVX2 File Evaluator**: Integrated hand-tuned AVX2 vector instructions directly into binary file checking routines (`FS_FileCompare`). It streams up to 32 bytes concurrently per clock cycle directly into hardware YMM vector registers with zero loop branching.
-* **Single-Pass Path Sanitization**: Rewrote legacy path normalizations from slow $O(N^2)$ structural array shifts into a highly responsive two-pointer reader/writer path configuration that strips duplicate or invalid separators in a single $O(N)$ pass.
-* **Multi-Segment Path Filtering**: Completely replaced the old string matching layout with a high-performance multi-segment tokenization system, drastically accelerating file lookups and matching passes across thousands of files.
-* **Expanded File Found Capacity**: Increased `MAX_FOUND_FILES` tracking limits to handle massive mod installations seamlessly without crashing or truncating file assets.
+### 📦 Virtual Filesystem (VFS) & Zip Traversal (`files.c`)
+* **PK3 Directory Caching (`pk3cache.dat`)**: Caches ZIP/PK3 directory scans in a binary cache file validated by size and timestamp.
+  * *Benefit*: Bypasses minizip traversal on startup, significantly reducing game load times.
+* **Intelligent Stream Seeking**: Overhauled zlib stream seeking to jump forward using absolute offsets in the decompression window.
+  * *Benefit*: Avoids full zip rewinds and decompression passes during seek operations.
+* **Expanded File Hash Table**: Increased `MAX_FILEHASH_SIZE` from 1,024 to 32,768.
+  * *Benefit*: Reduces hash collision chains, keeping file lookup times near $O(1)$ under heavy mod loads.
+* **AVX2 File Comparison**: Uses 256-bit AVX2 registers in `FS_FileCompare` to compare 32 bytes per cycle.
+  * *Benefit*: Speeds up binary file verification and comparison passes.
+* **Linear Path Normalization**: Replaced $O(N^2)$ array shifts in path sanitization with a single $O(N)$ two-pointer pass.
+  * *Benefit*: Lowers CPU overhead when resolving long path sequences.
+* **Multi-Segment Path Filtering**: Replaced legacy wildcard string matching with tokenized multi-segment filtering.
+  * *Benefit*: Speeds up directory searches and asset matches across thousands of files.
+* **Increased File Tracking Limits**: Raised `MAX_FOUND_FILES` limit.
+  * *Benefit*: Prevents engine crashes when launching massive total-conversion mods.
+
+### 📐 Collision Model & Map Loading (`cm_load.c` / `cm_trace.c`)
+* **RAM-Based Map Caching**: Retains decompressed map collision hulls and geometry in system memory.
+  * *Benefit*: Level loads and quickloads for the same map are near-instantaneous by bypassing disk extraction and parser passes.
+* **Consolidated Map Streaming**: Removed the redundant `cm_stream.c` file and integrated dynamic map-switching directly into `cm_load.c` and the server startup pipeline.
+  * *Benefit*: Streamlines code architecture and eliminates loading hitches during transitions.
+* **Branchless Box Collision Math**: Redesigned spatial ray-intersection checks inside bounding box clipping tasks using branchless vector min/max selections.
+  * *Benefit*: Prevents CPU instruction pipeline stalls by eliminating branch mispredictions.
+* **Model Bounds Loading Fix**: Corrected modelbounds parsing logic.
+  * *Benefit*: Prevents collision and tracking errors on world asset clip layers.
 
 ### 🔊 Dynamic Spatial Audio & Environmental Reverb (OpenAL EFX / EAX)
-* **Dynamic Ray-Traced Reverb**: Implemented a highly responsive acoustic tracing engine. The game dynamically casts geometric rays into the active map layout to calculate real-time room volume, outdoor exposure, and structural boundaries, adjusting OpenAL EFX reverb parameters instantly on the fly.
-* **OpenAL EFX Occlusion Filtering**: Injected native acoustic occlusion filters. Sound sources are dynamically processed through low-pass frequency filters when geometric line-of-sight is obstructed, realistically muffling sound propagation behind walls, doors, and solid brushes.
-* **EAX Preset Architecture & Crossfading**: Integrated advanced EAX environmental reverb presets featuring seamless crossfading transitions, allowing smooth acoustic morphing when transitioning from tight indoor corridors to wide-open outdoor areas.
-* **Native 3D HRTF Subsystem**: Exposed full Head-Related Transfer Function (HRTF) configuration controls directly to the user interface, unlocking authentic binaural 3D audio spatialization for precise directional audio tracking.
-* **Streamlined X-Macro Subsystem Initialization**: Consolidated and optimized the entire OpenAL function pointer allocation backend using compile-time X-Macros, eliminating runtime overhead and improving code maintainability.
-* **Hardware-Saturated SIMD Audio Mixer**: Leveraged 128-bit vector lanes and hardware-level saturation packing primitives (`_mm_packs_epi32`) to mix audio channels in parallel chunks, combining and clamping up to 4 stereo audio streams concurrently in a single CPU cycle to completely avoid dynamic boundary branches.
+* **Dynamic Ray-Traced Reverb**: Casts geometric rays into the map to calculate room volume, outdoor exposure, and structural boundaries.
+  * *Benefit*: Dynamically adjusts OpenAL EFX reverb parameters on the fly based on the player's immediate physical environment.
+* **OpenAL EFX Occlusion**: Applies low-pass filters to sound sources when line-of-sight is blocked.
+  * *Benefit*: Simulates realistic acoustic muffling behind walls, doors, or solid brushes.
+* **EAX Reverb Presets & Crossfading**: Supports EAX presets with crossfading.
+  * *Benefit*: Ensures smooth acoustic transitions when moving between indoor corridors and open outdoor zones.
+* **HRTF Support**: Exposed Head-Related Transfer Function configuration in the UI.
+  * *Benefit*: Delivers binaural 3D spatial audio for precise directional tracking on headphones.
+* **X-Macro OpenAL Binding**: Uses compile-time X-Macros to initialize OpenAL function pointers.
+  * *Benefit*: Removes runtime binding boilerplate, decreasing initialization overhead.
+* **SIMD Audio Mixer**: Uses 128-bit SSE lanes and saturation packing (`_mm_packs_epi32`).
+  * *Benefit*: Mixes up to 4 stereo streams in parallel without branching, preventing audio cracking during heavy combat.
 
-### 📐 Core Math & Renderer Geometry Engines (`q_math.c` / `q_shared.h` / `tr_mesh.c`)
-* **Vectorized Norm Primitives**: Upgraded 3D vector normalizations using 128-bit SIMD intrinsics. Costly legacy scalar math pipelines are replaced with hardware-native inverse square root approximations (`_mm_rsqrt_ps`).
-* **Branchless Boundary Clamping**: Eliminated CPU branch misprediction penalties by converting coordinate clamping gates to hardware-native `fminf` and `fmaxf` functions, flattening paths into single-cycle assembly primitives (`minss`/`maxss`).
-* **Parallel 3-Axis Fog Masking**: Accelerated atmospheric fog matching calculations by loading mesh bounding sphere coordinates and fog volume limits directly into SSE vector lanes, processing three-dimensional spatial bounding checks across all three axes simultaneously via parallel masking (`_mm_movemask_ps`).
-* **Direct Truncation Bypass**: Replaced serialized indirect function pointer calls inside `R_ComputeLOD` with direct inline integer typecasting to un-serialize the instruction scheduling engine.
-* **User Command & Angle Optimization**: Streamlined view-angle calculations and optimized high-frequency user command handling (`usercmd_t`) to drop processing overhead during intense player movement frames.
-
-### 💥 Multi-Threaded Job System & Collision Engine (`cm_trace.c`)
-* **Parallelized Particle Subsystem**: Decoupled the engine core's frame dependencies by implementing a multi-threaded background job engine, allowing parallelized runtime processing of engine particle updates.
-* **Branchless Box Collision Math**: Redesigned spatial ray-intersection logic inside bounding box clipping tasks using branchless vector min/max selections to eliminate structural branch chains.
-* **Model Bounds Loading Fix**: Corrected historical modelbounds parsing logic to guarantee error-free tracking of world asset collision layers.
+### 📐 Core Math & Renderer Geometry (`q_math.c` / `q_shared.h` / `tr_mesh.c`)
+* **SIMD Vector Normalization**: Replaced scalar vector normalizations with SSE intrinsics and reciprocal square root approximations (`_mm_rsqrt_ps`).
+  * *Benefit*: Speeds up coordinate transformation math.
+* **Branchless Coordinate Clamping**: Replaced clamping branches with `fminf` and `fmaxf`, compiling down to single-instruction `minss`/`maxss` assembly primitives.
+  * *Benefit*: Avoids branch mispredictions during player movement and camera updates.
+* **SIMD Fog Volume Checks**: Checks mesh bounding spheres against fog volume limits in parallel using SSE masking (`_mm_movemask_ps`).
+  * *Benefit*: Speeds up atmospheric fog visibility calculations.
+* **Inlined LOD Calculations**: Replaced indirect function calls in `R_ComputeLOD` with direct inline calculations.
+  * *Benefit*: Eliminates call stack overhead when processing complex mesh details.
+* **User Command Optimizations**: Streamlined view-angle calculations and command processing (`usercmd_t`).
+  * *Benefit*: Reduces per-frame CPU consumption during high-rate player movements.
 
 ### 🤖 Bot Intelligence Optimization (`ai_main.c` / `g_bot.c`)
-* **Branchless Route Wrapping**: Injected mathematical angle calculation wrapping using hardware rounding primitives (`roundf`), allowing pathing bots to instantly calculate shortest-turn steering paths.
-* **SIMD Snapshot Gatherers**: Integrated 128-bit unaligned memory instructions (`_mm_storeu_ps` / `_mm_loadu_ps`) to copy transform state structures to entity fields simultaneously.
+* **Fast Bot Pathing**: Uses hardware-native rounding (`roundf`) for fast angle wrapping in bot path navigation.
+  * *Benefit*: Decreases bot decision-making overhead.
+* **Vectorized Transform Copies**: Uses SSE unaligned loads/stores (`_mm_loadu_ps` / `_mm_storeu_ps`) to copy 3D transform structures in single operations.
+  * *Benefit*: Minimizes memory bandwidth usage when updating bot structures.
 
 ### ⚡ Modernized x86_64 JIT QVM Compiler (`vm_x86.c` / `vm.c` / `vm_local.h`)
-* **Dynamic Register Caching**: Upgraded the legacy stack JIT compiler to a dynamic register allocation system (using `vm_optimize.h`). It caches QVM stack variables in physical CPU registers (e.g., RAX, RCX, RDX), eliminating up to 80% of virtual stack memory traffic for near-native execution speed.
-* **W^X Hardening Compatibility**: Transitioned the JIT execution memory architecture to a secure Write-or-Execute (W^X) design. Code memory pages are allocated as write-only, compiled, and then safely protected as read-only and executable (`PROT_READ|PROT_EXEC`) via `mprotect` before calling.
-* **Advanced Instruction Merging & Macro-Operations (MOPs)**: Merges sequences of virtual instructions into tight machine code blocks (e.g., merging constant loading and math operations) and maps floating-point ceil/floor operations directly to SSE4.1 `roundss` hardware instructions.
-* **Pre-Compilation Verification & Dead Code Elimination**: Integrates pre-compilation verification (`VM_CheckInstructions`), LCC compiler instruction fixups (`VM_Fixup`), and module-specific optimizations with standard CRC32 checksum lookup validation.
-* **JIT-on-Startup Default Settings**: Updated the core engine defaults to launch QVM modules (`vm_game`, `vm_cgame`, `vm_ui`) in JIT compiled mode (`1`) on startup automatically.
+* **Dynamic Register Caching**: Caches QVM stack variables directly in x86-64 registers (RAX, RCX, RDX) via `vm_optimize.h`.
+  * *Benefit*: Cuts stack memory traffic by up to 80%, accelerating virtual machine execution toward native speeds.
+* **W^X Memory Hardening**: Transitioned JIT buffer allocation to a Write-or-Execute model using `mprotect` to switch memory pages to `PROT_READ | PROT_EXEC` after code emission.
+  * *Benefit*: Protects the engine against dynamic code injection vulnerabilities.
+* **Instruction Merging**: Merges related VM instructions into single machine code blocks and maps floating-point ceil/floor operations directly to SSE4.1 `roundss` instructions.
+  * *Benefit*: Reduces instruction cache footprint and improves execution pipelining.
+* **QVM Verification & Fixups**: Added pre-compilation instruction verification (`VM_CheckInstructions`), LCC compiler instruction fixups (`VM_Fixup`), and CRC32 lookup validation.
+  * *Benefit*: Prevents crash loops when executing legacy or corrupt custom mods.
+* **JIT Enabled by Default**: Configured the engine to default to JIT execution (`vm_* 1`) for game, cgame, and UI modules.
+  * *Benefit*: Unlocks maximum mod execution performance out of the box.
 
 ---
 
-## 🎨 UI, Gameplay Systems, & Dev Infrastructure
+## UI, Gameplay Systems, & Dev Infrastructure
 
-* **The "Sofia" Custom Settings Subsystem**: Designed and integrated a bespoke user interface tab dedicated to housing advanced options, including custom audio controls (HRTF, occlusion, reverb behaviors) and dedicated Discord parameters. UI menu layout constraints and padding metrics were fully refactored to eliminate clipping bugs and remove legacy duplicate option listings.
-* **Native Discord Rich Presence**: Implemented deep gameplay integration featuring lookups for customized mods, active weapons labeled with dynamic emojis, live kills/score mapping, and background thread socket isolation. Includes API throttling protection to protect system performance.
-* **Tactical Flashlight Subsystem**: Introduced a functional flashlight mechanic complete with dynamic battery dimming curves, customized HUD indicators, and reactive AI detection paths.
-* **Dynamic High-DPI Console Scaling**: Replaced legacy fixed pixel console metrics with an adaptable system that handles character sizing gracefully on modern high-resolution monitors.
-* **Linux Containerization & Distrobox Support**: Built native build-time environment detection tailored for containerized development environments, explicitly supporting compilation inside `Bazzite-dev-nvidia` containers with automated context messaging.
-* **Modernized Foundations**: Native support for Linux Steam Workshop directories alongside upgrading the core decompression backbone from Zlib `1.2.11` to the highly optimized Zlib `1.3.2` framework.
-* **Focus Loss Automation**: Injected automated game pausing and sound muting routines triggered instantly when the application loses operating system window focus.
-* **CI/CD Automation**: Authored complete local build and deployment shell scripts to completely automate compile-to-package pipelines.
+* **\"Sofia\" Advanced Settings Menu**: Added a custom settings tab to control HRTF, audio occlusion, reverb, and Discord options. Refactored UI menu layouts to clean up padding.
+  * *Benefit*: Provides a clean, accessible layout for new settings without text clipping or overlapping fields.
+* **Discord Rich Presence**: Integrates game state (active mod, weapons with dynamic emojis, score/kills) into Discord via background thread sockets.
+  * *Benefit*: Displays rich activity status to friends without introducing gameplay micro-stutters.
+* **Tactical Flashlight**: Added a battery-powered flashlight with dynamic dimming curves, HUD indicators, and AI detection paths.
+  * *Benefit*: Enhances tactical options with realistic battery consumption and AI stealth responses.
+* **High-DPI Console Scaling**: Scales the console layout dynamically.
+  * *Benefit*: Ensures the console is fully legible on modern high-resolution 1440p and 4K displays.
+* **Bazzite & Distrobox Dev Support**: Configured build scripts for compiling within `Bazzite-dev-nvidia` Distrobox containers.
+  * *Benefit*: Streamlines dev environment setup on immutable Linux OS configurations.
+* **Engine Updates**: Added support for Steam Workshop paths on Linux, and updated zlib from `1.2.11` to `1.3.2`.
+  * *Benefit*: Extends compatibility to modern workshop structures and speeds up file decompression.
+* **Focus Loss Muting/Pausing**: Automatically pauses the game and mutes audio when the application window loses focus.
+  * *Benefit*: Eliminates noise pollution and prevents in-game player deaths during Alt-Tabbing.
+* **CI/CD Automation**: Automated package compilation and packaging through build scripts.
+  * *Benefit*: Eliminates manual steps when building game release distributions.
 
 ---
 
-## 🛠️ Hardware Architecture & Build Matrix
+## Hardware Architecture & Build Matrix
 
 To build this modernized engine environment, the compilation pipeline targets native advanced hardware optimization flags:
 
 ```bash
 # Target Compiler Flags for Optimized Native Execution
 -mavx2 -mfma -msse4.1 -O3
+```
