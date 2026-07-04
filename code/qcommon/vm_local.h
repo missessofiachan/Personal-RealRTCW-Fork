@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Max number of arguments to pass from engine to vm's vmMain function.
 // command number + 12 arguments
 #define MAX_VMMAIN_ARGS 13
+#define MAX_VMMAIN_CALL_ARGS MAX_VMMAIN_ARGS
 
 // Max number of arguments to pass from a vm to engine's syscall handler function for the vm.
 // syscall number + 15 arguments
@@ -35,10 +36,49 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	OPSTACK_SIZE	1024
 #define	OPSTACK_MASK	(OPSTACK_SIZE-1)
 
-// don't change
 // Hardcoded in q3asm a reserved at end of bss
 #define	PROGRAM_STACK_SIZE	0x10000
 #define	PROGRAM_STACK_MASK	(PROGRAM_STACK_SIZE-1)
+
+#ifndef S_COLOR_WARNING
+#define S_COLOR_WARNING S_COLOR_YELLOW
+#endif
+
+#define MAX_OPSTACK_SIZE 512
+#define PROC_OPSTACK_SIZE 128
+
+typedef union vmFunc_u {
+	byte		*ptr;
+	void (*func)(void);
+} vmFunc_t;
+
+typedef struct {
+	int32_t	value;     // 32
+	byte	op;        // 8
+	byte	opStack;   // 8
+	unsigned jused:1;  // this instruction is a jump target
+	unsigned swtch:1;  // indirect jump
+	unsigned safe:1;   // non-masked OP_STORE*
+	unsigned endp:1;   // for last OP_LEAVE instruction
+	unsigned fpu:1;    // load into FPU register
+	unsigned njump:1;  // near jump
+} instruction_t;
+
+extern cvar_t *vm_rtChecks;
+
+#define VM_RTCHECK_PSTACK  1
+#define VM_RTCHECK_OPSTACK 2
+#define VM_RTCHECK_JUMP    4
+#define VM_RTCHECK_DATA    8
+
+typedef enum {
+	VM_FREE = -1,
+	VM_GAME = 0,
+	VM_CGAME,
+	VM_UI,
+	VM_COUNT
+} vmIndex_t;
+
 
 typedef enum {
 	OP_UNDEF, 
@@ -124,8 +164,31 @@ typedef enum {
 	OP_MULF,
 
 	OP_CVIF,
-	OP_CVFI
+	OP_CVFI,
+	OP_MAX
 } opcode_t;
+
+#define JUMP	(1<<0)
+#define FPU		(1<<1)
+
+typedef struct opcode_info_s
+{
+	int	size;
+	int	stack;
+	int	nargs;
+	int	flags; // rhs type cast
+} opcode_info_t;
+
+extern const opcode_info_t ops[ OP_MAX ];
+
+#define CPU_FCOM   1
+#define CPU_MMX    2
+#define CPU_SSE    4
+#define CPU_SSE2   8
+#define CPU_SSE3   16
+#define CPU_SSE41  32
+
+#define CPU_Flags  (CPU_FCOM | CPU_SSE | CPU_SSE2 | CPU_SSE41)
 
 
 
@@ -161,7 +224,7 @@ struct vm_s {
 	qboolean	currentlyInterpreting;
 
 	qboolean	compiled;
-	byte		*codeBase;
+	vmFunc_t	codeBase;
 	int			entryOfs;
 	int			codeLength;
 
@@ -185,16 +248,35 @@ struct vm_s {
 	int			breakFunction;		// increment breakCount on function entry to this
 	int			breakCount;
 
-	byte		*jumpTableTargets;
+	int32_t		*jumpTableTargets;
 	int			numJumpTableTargets;
+
+	// New JIT fields
+	unsigned int codeSize;
+	int32_t     *opStack;
+	int32_t     *opStackTop;
+	uint32_t    crc32sum;
+	qboolean    forceDataMask;
+	uint32_t    exactDataLength;
+	uint32_t    programStackExtra;
+	int         syscallCount;
+	int         index;
 };
 
 
 extern	vm_t	*currentVM;
 extern	int		vm_debugLevel;
 
-void VM_Compile( vm_t *vm, vmHeader_t *header );
-int	VM_CallCompiled( vm_t *vm, int *args );
+qboolean VM_Compile( vm_t *vm, vmHeader_t *header );
+int32_t	VM_CallCompiled( vm_t *vm, int32_t *args );
+
+const char *VM_LoadInstructions( const byte *code_pos, int codeLength, int instructionCount, instruction_t *buf );
+const char *VM_CheckInstructions( instruction_t *buf,
+								int instructionCount,
+								const int32_t *jumpTableTargets,
+								int numJumpTableTargets,
+								int dataLength );
+void VM_ReplaceInstructions( vm_t *vm, instruction_t *buf );
 
 void VM_PrepareInterpreter( vm_t *vm, vmHeader_t *header );
 int	VM_CallInterpreted( vm_t *vm, int *args );
