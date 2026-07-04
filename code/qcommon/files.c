@@ -2719,65 +2719,59 @@ int FS_Seek( fileHandle_t f, long offset, int origin ) {
 	}
 
 	if ( fsh[f].zipFile == qtrue ) {
-		//FIXME: this is really, really crappy
-		//(but better than what was here before)
-		byte	buffer[PK3_SEEK_BUFFER_SIZE];
-		int		remainder;
+		byte	buffer[4096]; // 4KB cache-friendly buffer stack
 		int		currentPosition = FS_FTell( f );
+		int		targetPos = 0;
 
-		// change negative offsets into FS_SEEK_SET
-		if ( offset < 0 ) {
-			switch( origin ) {
-				case FS_SEEK_END:
-					remainder = fsh[f].zipFileLen + offset;
-					break;
-
-				case FS_SEEK_CUR:
-					remainder = currentPosition + offset;
-					break;
-
-				case FS_SEEK_SET:
-				default:
-					remainder = 0;
-					break;
-			}
-
-			if ( remainder < 0 ) {
-				remainder = 0;
-			}
-
-			origin = FS_SEEK_SET;
-		} else {
-			if ( origin == FS_SEEK_END ) {
-				remainder = fsh[f].zipFileLen - currentPosition + offset;
-			} else {
-				remainder = offset;
-			}
-		}
-
+		// 1. Calculate the absolute target destination position cleanly
 		switch( origin ) {
 			case FS_SEEK_SET:
-				if ( remainder == currentPosition ) {
-					return offset;
-				}
-				unzSetOffset(fsh[f].handleFiles.file.z, fsh[f].zipFilePos);
-				unzOpenCurrentFile(fsh[f].handleFiles.file.z);
-				//fallthrough
-
-			case FS_SEEK_END:
+				targetPos = offset;
+				break;
 			case FS_SEEK_CUR:
-				while( remainder > PK3_SEEK_BUFFER_SIZE ) {
-					FS_Read( buffer, PK3_SEEK_BUFFER_SIZE, f );
-					remainder -= PK3_SEEK_BUFFER_SIZE;
-				}
-				FS_Read( buffer, remainder, f );
-				return offset;
-
+				targetPos = currentPosition + offset;
+				break;
+			case FS_SEEK_END:
+				targetPos = fsh[f].zipFileLen + offset;
+				break;
 			default:
 				Com_Error( ERR_FATAL, "Bad origin in FS_Seek" );
 				return -1;
 		}
-	} else {
+
+		// Clamp the bounds safely to prevent trailing memory overruns
+		if ( targetPos < 0 ) {
+			targetPos = 0;
+		} else if ( targetPos > fsh[f].zipFileLen ) {
+			targetPos = fsh[f].zipFileLen;
+		}
+
+		// Quick out if we are already sitting at the requested spot
+		if ( targetPos == currentPosition ) {
+			return 0;
+		}
+
+		int remainder;
+		if ( targetPos > currentPosition ) {
+			// HIGH-IMPACT OPTIMIZATION: We are moving forward! 
+			// Do NOT reset the zlib inflation stream. Just read the delta from where we are.
+			remainder = targetPos - currentPosition;
+		} else {
+			// Moving backward: We have no choice but to rewind to 0 and advance forward.
+			unzSetOffset(fsh[f].handleFiles.file.z, fsh[f].zipFilePos);
+			unzOpenCurrentFile(fsh[f].handleFiles.file.z);
+			remainder = targetPos;
+		}
+
+		// Stream skip loop
+		while( remainder > 0 ) {
+			int toRead = remainder > (int)sizeof(buffer) ? (int)sizeof(buffer) : remainder;
+			FS_Read( buffer, toRead, f );
+			remainder -= toRead;
+		}
+
+		return 0; // Return 0 to correctly match standard library fseek success signatures
+	} else {	
 		FILE *file;
 		file = FS_FileForHandle( f );
 		switch ( origin ) {
