@@ -1045,6 +1045,42 @@ void CM_TriggerMapStream(const char *mapName) {
 	Sys_QueueJob(AsyncMapStreamWorker, &g_mapStreamer); //
 }
 
+
+/*
+==================
+CM_GetStreamedBuffer
+
+Returns a pre-loaded map buffer if one is READY and matches the requested map name.
+Resets streamer to IDLE so the frame poller won't double-process it.
+==================
+*/
+void *CM_GetStreamedBuffer( const char *mapName, int *outLen ) {
+    if ( !mapName || !mapName[0] || !outLen ) return NULL;
+
+    // Only claim the buffer if it's fully loaded
+    if ( g_mapStreamer.state != STREAM_READY ) return NULL;
+
+    // Wait for any lingering background thread actions to safely finish
+    Sys_WaitJobs(); //
+
+    if ( Q_stricmp( g_mapStreamer.mapName, mapName ) != 0 ) return NULL;
+
+    // Hand ownership over to the server spawn pipeline
+    void *buf  = g_mapStreamer.buffer;
+    *outLen    = g_mapStreamer.bufferLen;
+
+    // Clear streamer states immediately
+    g_mapStreamer.buffer    = NULL;
+    g_mapStreamer.bufferLen = 0;
+    g_mapStreamer.state     = STREAM_IDLE;
+
+    Com_Printf( "Stream-System: Buffer for '%s' claimed by spawn pipeline.\n", mapName );
+    return buf;
+}
+
+
+
+
 /*
 ==================
 CM_PollStreamerHandshake
@@ -1096,4 +1132,97 @@ void CM_StreamMap_f(void) {
 	CM_TriggerMapStream(Cmd_Argv(1));
 }
 
+/*
+======================================================================================
+CM_AutoTriggerNextCampaignMap
 
+MODIFIED: Advanced dual-method level scanner. Sweeps geometry data strings first,
+and automatically falls back to unzipping and parsing the map's target companion 
+campaign script file (.script) to catch Single Player level switches seamlessly!
+======================================================================================
+*/
+void CM_AutoTriggerNextCampaignMap( const char *currentMapName ) {
+	char *p;
+	char nextMap[MAX_QPATH];
+	int i;
+
+	if ( !currentMapName || !currentMapName[0] ) return;
+
+	Com_Printf( "Stream-System: Running dynamic mod entity tracking pass...\n" );
+	nextMap[0] = '\0';
+
+	// METHOD A: Sweep the internal geometry entity lump strings first
+	if ( cm.entityString && cm.numEntityChars > 0 ) { //
+		p = strstr( cm.entityString, "\"target_changelevel\"" ); //
+		if ( !p ) p = strstr( cm.entityString, "\"nextmap\"" ); //
+
+		if ( p ) {
+			char *mapKey = strstr( p - 300 > cm.entityString ? p - 300 : cm.entityString, "\"map\"" ); //
+			if ( !mapKey || mapKey > p + 300 ) mapKey = strstr( p, "\"map\"" ); //
+			if ( mapKey ) {
+				char *value = strstr( mapKey + 5, "\"" );
+				if ( value ) {
+					value++;
+					for ( i = 0 ; i < MAX_QPATH - 1 ; i++ ) {
+						if ( value[i] == '"' || value[i] == '\0' || value[i] == '\n' || value[i] == '\r' ) break;
+						nextMap[i] = value[i];
+					}
+					nextMap[i] = '\0';
+				}
+			}
+		}
+	}
+
+	// METHOD B: If geometry arrays are blind, read the level's companion campaign script file!
+	if ( !nextMap[0] ) {
+		char scriptPath[MAX_QPATH];
+		void *scriptBuffer;
+		int scriptLen = 0;
+
+		// Convert string path format: "maps/escape1.bsp" -> "maps/escape1.script"
+		Q_strncpyz( scriptPath, currentMapName, sizeof( scriptPath ) );
+		char *ext = strrchr( scriptPath, '.' );
+		if ( ext ) *ext = '\0';
+		Q_strcat( scriptPath, sizeof( scriptPath ), ".script" );
+
+		// Load the campaign script using our asynchronous thread-safe reader
+		extern void *FS_LoadFileAsync( const char *qpath, int *outLen );
+		scriptBuffer = FS_LoadFileAsync( scriptPath, &scriptLen );
+
+		if ( scriptBuffer && scriptLen > 0 ) {
+			// Locate the official Single Player map switch command token
+			p = strstr( (char *)scriptBuffer, "changelevel" );
+			if ( p ) {
+				p += 11; // Advance past "changelevel" text parameters
+				while ( *p == ' ' || *p == '\t' ) p++; // Skip whitespace lanes
+				
+				for ( i = 0 ; i < MAX_QPATH - 1 ; i++ ) {
+					if ( p[i] == ' ' || p[i] == '\t' || p[i] == '\n' || p[i] == '\r' || p[i] == '\0' ) break;
+					nextMap[i] = p[i];
+				}
+				nextMap[i] = '\0';
+			}
+			free( scriptBuffer ); // Clean up memory directly from system heap
+		}
+	}
+
+	// Route the identified destination map into the background job system
+	if ( nextMap[0] ) {
+		char bspPath[MAX_QPATH];
+		if ( !strstr( nextMap, "maps/" ) ) {
+			Com_sprintf( bspPath, sizeof( bspPath ), "maps/%s.bsp", nextMap );
+		} else {
+			Com_sprintf( bspPath, sizeof( bspPath ), "%s", nextMap );
+		}
+		if ( !strstr( bspPath, ".bsp" ) ) {
+			Q_strcat( bspPath, sizeof( bspPath ), ".bsp" );
+		}
+
+		Com_Printf( "Stream-System: Dynamic script scanner discovered next target level -> '%s'\n", bspPath );
+		
+		extern void CM_TriggerMapStream( const char *mapName );
+		CM_TriggerMapStream( bspPath );
+	} else {
+		Com_Printf( "Stream-System: No transition markers located. Auto-streaming resting.\n" );
+	}
+}

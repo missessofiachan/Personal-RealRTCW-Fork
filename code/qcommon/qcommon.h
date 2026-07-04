@@ -116,6 +116,8 @@ void MSG_ReadDeltaPlayerstate( msg_t *msg, struct playerState_s *from, struct pl
 
 void MSG_ReportChangeVectors_f( void );
 
+void *CM_GetStreamedBuffer( const char *mapName, int *outLen );
+
 //============================================================================
 
 /*

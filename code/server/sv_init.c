@@ -824,7 +824,46 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 
 	FS_Restart( sv.checksumFeed );
 
-	CM_LoadMap( va( "maps/%s.bsp", server ), qfalse, &checksum );
+// --- SEAMLESS STREAMING: Use pre-cached RAM buffer if available ---
+{
+    // Explicitly declare the functions to satisfy the compiler definitions
+    extern void *CM_GetStreamedBuffer( const char *mapName, int *outLen );
+    extern void  CM_LoadMapFromBuffer( const char *name, void *bufferData, int bufferLen, qboolean clientload, int *checksum );
+    extern void  Sys_QueueJob( void (*work)(void*), void* arg );
+
+    void *streamedBuf = NULL;
+    int   streamedLen = 0;
+    char  bspPath[MAX_QPATH];
+
+    Com_sprintf( bspPath, sizeof( bspPath ), "maps/%s.bsp", server );
+    streamedBuf = CM_GetStreamedBuffer( bspPath, &streamedLen );
+
+    if ( streamedBuf && streamedLen > 0 ) {
+        Com_Printf( "Stream-System: Using pre-cached buffer for %s (%d bytes)\n", bspPath, streamedLen );
+        
+        // Load map straight out of RAM buffer we streamed while playing!
+        CM_LoadMapFromBuffer( bspPath, streamedBuf, streamedLen, qfalse, &checksum );
+        
+        // Offload the memory cleanup to a background core to keep the main thread moving
+        Sys_QueueJob( free, streamedBuf );
+    } else {
+        // Fallback: No pre-cached data found, read from disk normally
+        CM_LoadMap( bspPath, qfalse, &checksum );
+    }
+	{
+    extern void CM_AutoTriggerNextCampaignMap( const char *currentMapName );
+    char currentBspPath[MAX_QPATH];
+    Com_sprintf( currentBspPath, sizeof( currentBspPath ), "maps/%s.bsp", server );
+    
+    CM_AutoTriggerNextCampaignMap( currentBspPath );
+}
+}
+
+
+
+
+// --- END SEAMLESS STREAMING ---
+
 
 	// set serverinfo visible name
 	Cvar_Set( "mapname", server );
