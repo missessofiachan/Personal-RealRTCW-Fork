@@ -173,132 +173,105 @@ R_ComputeLOD
 =================
 */
 int R_ComputeLOD( trRefEntity_t *ent ) {
-	float radius;
-	float flod, lodscale;
-	float projectedRadius;
-	md3Frame_t *frame;
-	mdrHeader_t *mdr;
-	mdrFrame_t *mdrframe;
-	int lod;
+    float radius;
+    float flod, lodscale;
+    float projectedRadius;
+    md3Frame_t *frame;
+    mdrHeader_t *mdr;
+    mdrFrame_t *mdrframe;
+    int lod;
 
-	if ( tr.currentModel->numLods < 2 ) {
-		// model has only 1 LOD level, skip computations and bias
-		lod = 0;
-	} else
-	{
-		// multiple LODs exist, so compute projected bounding sphere
-		// and use that as a criteria for selecting LOD
+    if ( tr.currentModel->numLods < 2 ) {
+        return 0;
+    }
 
-		if(tr.currentModel->type == MOD_MDR)
-		{
-			int frameSize;
-			mdr = (mdrHeader_t *) tr.currentModel->modelData;
-			frameSize = (size_t) (&((mdrFrame_t *)0)->bones[mdr->numBones]);
-			
-			mdrframe = (mdrFrame_t *) ((byte *) mdr + mdr->ofsFrames + frameSize * ent->e.frame);
-			
-			radius = RadiusFromBounds(mdrframe->bounds[0], mdrframe->bounds[1]);
-		}
-		else
-		{
-			// RF, checked for a forced lowest LOD
-			if ( ent->e.reFlags & REFLAG_FORCE_LOD ) {
-				return ( tr.currentModel->numLods - 1 );
-			}
-	
-			frame = ( md3Frame_t * )( ( ( unsigned char * ) tr.currentModel->md3[0] ) + tr.currentModel->md3[0]->ofsFrames );
-	
-			frame += ent->e.frame;
-	
-			radius = RadiusFromBounds( frame->bounds[0], frame->bounds[1] );
-	
-			//----(SA)	testing
-			if ( ent->e.reFlags & REFLAG_ORIENT_LOD ) {
-				// right now this is for trees, and pushes the lod distance way in.
-				// this is not the intended purpose, but is helpful for the new
-				// terrain level that has loads of trees
-//				radius = radius/2.0f;
-			}
-			//----(SA)	end
-		}
+    if ( tr.currentModel->type == MOD_MDR ) {
+        int frameSize;
+        mdr = (mdrHeader_t *) tr.currentModel->modelData;
+        frameSize = (size_t) (&((mdrFrame_t *)0)->bones[mdr->numBones]);
+        mdrframe = (mdrFrame_t *) ((byte *) mdr + mdr->ofsFrames + frameSize * ent->e.frame);
+        radius = RadiusFromBounds( mdrframe->bounds[0], mdrframe->bounds[1] );
+    } else {
+        if ( ent->e.reFlags & REFLAG_FORCE_LOD ) {
+            return ( tr.currentModel->numLods - 1 );
+        }
 
-		if ( ( projectedRadius = ProjectRadius( radius, ent->e.origin ) ) != 0 ) {
-			lodscale = r_lodscale->value;
-			if ( lodscale > 20 ) {
-				lodscale = 20;
-			}
-			flod = 1.0f - projectedRadius * lodscale;
-		} else
-		{
-			// object intersects near view plane, e.g. view weapon
-			flod = 0;
-		}
+        frame = ( md3Frame_t * )( ( ( unsigned char * ) tr.currentModel->md3[0] ) + tr.currentModel->md3[0]->ofsFrames );
+        frame += ent->e.frame;
+        radius = RadiusFromBounds( frame->bounds[0], frame->bounds[1] );
+    }
 
-		flod *= tr.currentModel->numLods;
-		lod = ri.ftol( flod );
+    projectedRadius = ProjectRadius( radius, ent->e.origin );
+    if ( projectedRadius != 0.0f ) {
+        lodscale = r_lodscale->value;
+        if ( lodscale > 20.0f ) {
+            lodscale = 20.0f;
+        }
+        flod = 1.0f - projectedRadius * lodscale;
+    } else {
+        flod = 0.0f;
+    }
 
-		if ( lod < 0 ) {
-			lod = 0;
-		} else if ( lod >= tr.currentModel->numLods )   {
-			lod = tr.currentModel->numLods - 1;
-		}
-	}
+    flod *= tr.currentModel->numLods;
 
-	lod += r_lodbias->integer;
+#ifndef Q3_VM
+    // Direct hardware truncation bypasses indirect pointer invocation
+    lod = (int)flod;
+#else
+    lod = ri.ftol( flod );
+#endif
 
-	if ( lod >= tr.currentModel->numLods ) {
-		lod = tr.currentModel->numLods - 1;
-	}
-	if ( lod < 0 ) {
-		lod = 0;
-	}
+    lod += r_lodbias->integer;
 
-	// prevent crash when try to load model's LOD levels that may not actually exist
-	int lod_pre = lod;
-	switch (tr.currentModel->type) {
-		case MOD_MDC:
-			// mdc check
-			if (lod >= MD3_MAX_LODS || tr.currentModel->mdc[lod] == NULL) {
-				// find first available LOD to prevent NULL pointer
-				int foundLod = -1;
-				for (int i = 0; i < MD3_MAX_LODS; i++) {
-					if (tr.currentModel->mdc[i] != NULL) {
-						foundLod = i;
-						break;
-					}
-				}
-				lod = (foundLod >= 0) ? foundLod : 0;
-			}
-			break;
-		case MOD_MESH:
-			// md3 check
-			if (lod >= MD3_MAX_LODS || tr.currentModel->md3[lod] == NULL) {
-				// find first available LOD to prevent NULL pointer
-				int foundLod = -1;
-				for (int i = 0; i < MD3_MAX_LODS; i++) {
-					if (tr.currentModel->md3[i] != NULL) {
-						foundLod = i;
-						break;
-					}
-				}
-				lod = (foundLod >= 0) ? foundLod : 0;
-			}
-			break;
-		case MOD_MDR:
-		case MOD_MDS:
-		case MOD_IQM:
-		case MOD_BRUSH:
-		case MOD_BAD:
-		default:
-			break;
-	}
+    // Standard inline boundaries to ensure absolute compilation safety
+    if ( lod < 0 ) {
+        lod = 0;
+    } else if ( lod >= tr.currentModel->numLods ) {
+        lod = tr.currentModel->numLods - 1;
+    }
 
-	if (lod != lod_pre) {
-		ri.Printf( PRINT_DEVELOPER, "\"R_ComputeLOD:\" \"%s\" index %d for LOD doesn't exist, change to %d\n",
-			tr.currentModel->name, lod_pre, lod);
-	}
+    // Prevent crash when trying to load model's LOD levels that may not actually exist
+    int lod_pre = lod;
+    switch ( tr.currentModel->type ) {
+        case MOD_MDC:
+            if ( lod >= MD3_MAX_LODS || tr.currentModel->mdc[lod] == NULL ) {
+                int foundLod = -1;
+                for ( int i = 0; i < MD3_MAX_LODS; i++ ) {
+                    if ( tr.currentModel->mdc[i] != NULL ) {
+                        foundLod = i;
+                        break;
+                    }
+                }
+                lod = ( foundLod >= 0 ) ? foundLod : 0;
+            }
+            break;
+        case MOD_MESH:
+            if ( lod >= MD3_MAX_LODS || tr.currentModel->md3[lod] == NULL ) {
+                int foundLod = -1;
+                for ( int i = 0; i < MD3_MAX_LODS; i++ ) {
+                    if ( tr.currentModel->md3[i] != NULL ) {
+                        foundLod = i;
+                        break;
+                    }
+                }
+                lod = ( foundLod >= 0 ) ? foundLod : 0;
+            }
+            break;
+        default:
+            break;
+    }
 
-	return lod;
+#if defined(__GNUC__) || defined(__clang__)
+    if ( __builtin_expect( lod != lod_pre, 0 ) ) 
+#else
+    if ( lod != lod_pre )
+#endif
+    {
+        ri.Printf( PRINT_DEVELOPER, "\"R_ComputeLOD:\" \"%s\" index %d for LOD doesn't exist, change to %d\n",
+            tr.currentModel->name, lod_pre, lod );
+    }
+
+    return lod;
 }
 
 /*
