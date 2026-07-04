@@ -39,6 +39,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "q_shared.h"
 #include "qcommon.h"
 #include "../zlib-1.3.2/unzip.h"
+#include <sys/stat.h>
 
 /*
 =============================================================================
@@ -235,8 +236,27 @@ static const unsigned int sp_sppak_checksums[] = {
 
 #define MAX_ZPATH           256
 #define MAX_SEARCH_PATHS    4096
-#define MAX_FILEHASH_SIZE   1024
+#define MAX_FILEHASH_SIZE   32768 // Expanded to prevent modern mod layout slowdowns
 
+// --- PK3 Index Cache Layouts ---
+#define PK3_CACHE_MAGIC   0x43483351  // "Q3HC" (Quake 3 Hash Cache Identifier)
+#define PK3_CACHE_VERSION 1
+
+typedef struct {
+    char          name[MAX_ZPATH];
+    unsigned long pos;
+    unsigned long len;
+} cachedFile_t;
+
+typedef struct {
+    char               pakFilename[MAX_OSPATH];
+    unsigned long long fileSize;
+    unsigned long long fileTime;
+    int                checksum;
+    int                pure_checksum;
+    int                numfiles;
+    int                hashSize;
+} cachedPack_t;
 typedef struct fileInPack_s {
 	char                    *name;      // name of the file
 	unsigned long pos;                  // file info position in zip
@@ -295,6 +315,8 @@ static int fs_loadStack;                    // total files in memory
 static int fs_packFiles = 0;                // total number of files in packs
 
 static int fs_checksumFeed;
+
+
 
 typedef union qfile_gus {
 	FILE*       o;
@@ -362,6 +384,8 @@ typedef struct {
 
 static fs_gate_rule_t *fs_gate_rules = NULL;
 static int             fs_gate_rule_count = 0;
+
+
 
 // Simple line helpers
 static char *FS_rtrim(char *s) {
