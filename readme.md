@@ -25,8 +25,7 @@ This repository is a modernized, high-performance fork of the Return to Castle W
 ### 📐 Collision Model & Map Loading (`cm_load.c` / `cm_trace.c`)
 * **RAM-Based Map Caching**: Retains decompressed map collision hulls and geometry in system memory.
   * *Benefit*: Level loads and quickloads for the same map are near-instantaneous by bypassing disk extraction and parser passes.
-* **Consolidated Map Streaming**: Removed the redundant `cm_stream.c` file and integrated dynamic map-switching directly into `cm_load.c` and the server startup pipeline.
-  * *Benefit*: Streamlines code architecture and eliminates loading hitches during transitions.
+
 * **Branchless Box Collision Math**: Redesigned spatial ray-intersection checks inside bounding box clipping tasks using branchless vector min/max selections.
   * *Benefit*: Prevents CPU instruction pipeline stalls by eliminating branch mispredictions.
 * **Model Bounds Loading Fix**: Corrected modelbounds parsing logic.
