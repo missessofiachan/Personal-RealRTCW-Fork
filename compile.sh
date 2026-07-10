@@ -152,6 +152,95 @@ if [ -f "$LAUNCHER_SRC" ]; then
     chmod +x "$LAUNCHER_DEST"
 fi
 
+# 3.5. Build and deploy Steamshim launcher natively
+echo -e "${BLUE}=== Compiling and Deploying Native Steam Launcher ===${NC}"
+echo -e "${GREEN}Detecting Steam library and Steamworks SDK headers...${NC}"
+
+# Locate the Steam client's 64-bit steam_api library.
+STEAM_LIB_PATH=""
+for path in \
+  "$HOME/.steam/steam/ubuntu12_64" \
+  "$HOME/.local/share/Steam/ubuntu12_64" \
+  "$HOME/.local/share/Steam/steamrt64" \
+  "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/ubuntu12_64"
+do
+  if [ -f "$path/libsteam_api.so" ]; then
+    STEAM_LIB_PATH="$path"
+    break
+  fi
+done
+
+if [ -z "$STEAM_LIB_PATH" ]; then
+    echo -e "${RED}Error: libsteam_api.so not found on the system. Cannot build Steamshim launcher.${NC}"
+    exit 1
+fi
+echo -e "Found libsteam_api.so at: ${YELLOW}$STEAM_LIB_PATH${NC}"
+
+# Locate Steamworks SDK headers
+STEAMWORKS_HEADERS=""
+for path in \
+  "/run/media/system/NVME_GAME_1/GitHub/proton-ge-custom/lsteamclient/steamworks_sdk_164" \
+  "/run/media/system/NVME_GAME_1/GitHub/proton-ge-custom/lsteamclient/steamworks_sdk_161" \
+  "/run/media/system/NVME_GAME_1/GitHub/proton-ge-custom/lsteamclient/steamworks_sdk_157" \
+  "/run/media/system/NVME_GAME_1/GitHub/proton-ge-custom/lsteamclient/steamworks_sdk_153a"
+do
+  if [ -f "$path/steam_api.h" ]; then
+    STEAMWORKS_HEADERS="$path"
+    break
+  fi
+done
+
+if [ -z "$STEAMWORKS_HEADERS" ]; then
+  # Try to find it dynamically in proton-ge-custom directory
+  PROTON_GE_DIR="/run/media/system/NVME_GAME_1/GitHub/proton-ge-custom"
+  if [ -d "$PROTON_GE_DIR" ]; then
+    STEAMWORKS_HEADERS=$(find "$PROTON_GE_DIR" -name "steam_api.h" -path "*/steamworks_sdk_*" 2>/dev/null | head -n 1 | xargs dirname 2>/dev/null)
+  fi
+fi
+
+if [ -z "$STEAMWORKS_HEADERS" ] || [ ! -d "$STEAMWORKS_HEADERS" ]; then
+    echo -e "${RED}Error: Steamworks SDK headers not found. Cannot build Steamshim launcher.${NC}"
+    exit 1
+fi
+echo -e "Found Steamworks SDK headers at: ${YELLOW}$STEAMWORKS_HEADERS${NC}"
+
+# Set up symlink to the headers
+echo "Creating Steamworks SDK symlink..."
+ln -sfn "$STEAMWORKS_HEADERS" "$SCRIPT_DIR/code/steamshim/launcher/steam"
+
+# Compile Steamshim launcher
+echo -e "${GREEN}Compiling Steamshim launcher natively...${NC}"
+mkdir -p "$SCRIPT_DIR/build/release-linux-x86_64-steam"
+if ! run_build_cmd g++ -o "$SCRIPT_DIR/build/release-linux-x86_64-steam/steamshim" \
+    -Wall -O2 -DRELEASE=1 \
+    "$SCRIPT_DIR/code/steamshim/launcher/steamshim_parent.cpp" \
+    -I "$SCRIPT_DIR/code/steamshim/launcher" \
+    -Wl,-rpath,'$ORIGIN' \
+    "$STEAM_LIB_PATH/libsteam_api.so"; then
+    echo -e "${RED}Failed to compile Steamshim launcher!${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Deploying Steamshim launcher to Steam directory...${NC}"
+cp -f "$SCRIPT_DIR/build/release-linux-x86_64-steam/steamshim" "$TARGET_DIR/steamshim"
+
+# Backup and replace Windows launcher.x64.exe with the native Linux ELF launcher
+if [ -f "$TARGET_DIR/launcher.x64.exe" ] && [ ! -f "$TARGET_DIR/launcher.x64.exe.bak" ]; then
+    echo "Backing up original Windows launcher..."
+    mv "$TARGET_DIR/launcher.x64.exe" "$TARGET_DIR/launcher.x64.exe.bak"
+fi
+cp -f "$SCRIPT_DIR/build/release-linux-x86_64-steam/steamshim" "$TARGET_DIR/launcher.x64.exe"
+
+# Symlink libsteam_api.so to the target directory
+if [ ! -f "$TARGET_DIR/libsteam_api.so" ]; then
+    echo "Symlinking libsteam_api.so..."
+    ln -sf "$STEAM_LIB_PATH/libsteam_api.so" "$TARGET_DIR/libsteam_api.so"
+fi
+
+# Ensure steam_appid.txt exists and contains the correct AppID
+echo "1379630" > "$TARGET_DIR/steam_appid.txt"
+
+
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 

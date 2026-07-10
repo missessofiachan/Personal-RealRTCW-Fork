@@ -41,11 +41,9 @@ This repository is a modernized, high-performance fork of the Return to Castle W
 
 ### 🔊 Dynamic Spatial Audio & Environmental Reverb (OpenAL EFX / EAX)
 * **Dynamic Ray-Traced Reverb**: Casts geometric rays into the map to calculate room volume, outdoor exposure, and structural boundaries.
-  * *Benefit*: Dynamically adjusts OpenAL EFX reverb parameters on the fly based on the player's immediate physical environment.
+  * *Benefit*: Dynamically adjusts OpenAL EFX reverb parameters on the fly based on the player's immediate physical environment, replacing static preset reverb.
 * **OpenAL EFX Occlusion**: Applies low-pass filters to sound sources when line-of-sight is blocked.
   * *Benefit*: Simulates realistic acoustic muffling behind walls, doors, or solid brushes.
-* **EAX Reverb Presets & Crossfading**: Supports EAX presets with crossfading.
-  * *Benefit*: Ensures smooth acoustic transitions when moving between indoor corridors and open outdoor zones.
 * **HRTF Support**: Exposed Head-Related Transfer Function configuration in the UI.
   * *Benefit*: Delivers binaural 3D spatial audio for precise directional tracking on headphones.
 * **X-Macro OpenAL Binding**: Uses compile-time X-Macros to initialize OpenAL function pointers.
