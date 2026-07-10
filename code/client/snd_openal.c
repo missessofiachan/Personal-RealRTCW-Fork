@@ -47,14 +47,12 @@ cvar_t *s_alInputDevice;
 cvar_t *s_alAvailableDevices;
 cvar_t *s_alAvailableInputDevices;
 cvar_t *s_alTalkAnims;
-cvar_t *s_alReverbPreset;
 cvar_t *s_alReverb;
 cvar_t *s_alReverbGain;
 cvar_t *s_alHRTF;
 cvar_t *s_alHRTFProfile;
 cvar_t *s_alHRTFProfileName;
 cvar_t *s_alAvailableHRTFs;
-cvar_t *s_alDynamicReverb;
 cvar_t *s_alOcclusion;
 
 static qboolean enumeration_ext = qfalse;
@@ -3213,18 +3211,13 @@ void S_AL_Update( void )
     s_alDopplerSpeed->modified = qfalse;
   }
 
-  if (s_alReverb->modified || s_alReverbPreset->modified)
+  if (s_alReverb->modified)
   {
-    if (s_alReverb->integer)
-    {
-      S_EFX_SetPreset(s_alReverbPreset->integer);
-    }
-    else
+    if (!s_alReverb->integer)
     {
       S_EFX_SetPreset(0);
     }
     s_alReverb->modified = qfalse;
-    s_alReverbPreset->modified = qfalse;
   }
 
   // Update EFX parameters (reverb crossfading tick)
@@ -3434,13 +3427,9 @@ static void S_AL_SoundInfo(void)
   }
 
   // EFX / Reverb status
-  Com_Printf("  EFX Reverb:     %s\n", s_alReverb->integer ? "^2Enabled" : "^1Disabled");
+  Com_Printf("  EFX Reverb:     %s\n", s_alReverb->integer ? "^2Enabled (Dynamic)" : "^1Disabled");
   if(s_alReverb->integer)
   {
-    const char* presetNames[] = { "OUTDOORS", "BUNKER", "ROOM", "LARGE HALL", "CRYPT", "TUNNEL", "SEWER", "DEPOT" };
-    int preset = s_alReverbPreset->integer;
-    if(preset >= 0 && preset <= 7)
-      Com_Printf("  Reverb Preset:  %s\n", presetNames[preset]);
     Com_Printf("  Reverb Gain:    %.2f\n", s_alReverbGain->value);
   }
 
@@ -3635,14 +3624,12 @@ qboolean S_AL_Init( soundInterface_t *si )
   s_alRolloff = Cvar_Get( "s_alRolloff", "1.3", CVAR_ARCHIVE);
   s_alGraceDistance = Cvar_Get("s_alGraceDistance", "512", CVAR_ARCHIVE);
   s_alTalkAnims = Cvar_Get("s_alTalkAnims", "160", CVAR_ARCHIVE);
-  s_alReverbPreset = Cvar_Get("s_alReverbPreset", "0", 0);
   s_alReverb = Cvar_Get("s_alReverb", "1", CVAR_ARCHIVE);
   s_alReverbGain = Cvar_Get("s_alReverbGain", "1.0", CVAR_ARCHIVE);
   s_alHRTF = Cvar_Get("s_alHRTF", "0", CVAR_ARCHIVE);
   s_alHRTFProfile = Cvar_Get("s_alHRTFProfile", "0", CVAR_ARCHIVE);
   s_alHRTFProfileName = Cvar_Get("s_alHRTFProfileName", "None", CVAR_ROM);
   s_alAvailableHRTFs = Cvar_Get("s_alAvailableHRTFs", "", CVAR_ROM | CVAR_NORESTART);
-  s_alDynamicReverb = Cvar_Get("s_alDynamicReverb", "1", CVAR_ARCHIVE);
   s_alOcclusion = Cvar_Get("s_alOcclusion", "1", CVAR_ARCHIVE);
 
   s_alDriver = Cvar_Get( "s_alDriver", ALDRIVER_DEFAULT, CVAR_LATCH | CVAR_PROTECTED );

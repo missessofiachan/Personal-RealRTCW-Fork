@@ -3725,7 +3725,7 @@ itemDef {
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
-		mouseenter { setCvar "ui_sofia_desc" "Toggle OpenAL EFX environmental reverb/echoes." }
+		mouseenter { setCvar "ui_sofia_desc" "Toggle OpenAL EFX dynamic environmental reverb using raytraced BSP geometry." }
 		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
@@ -3753,30 +3753,10 @@ itemDef {
 		name sofiasettings
 		textfont UI_FONT_BIG
 		group system
-		type ITEM_TYPE_YESNO
-		text "Dynamic Reverb"
-		cvar "s_alDynamicReverb"
-		rect 300 380 290 12
-		textalign ITEM_ALIGN_RIGHT
-		textalignx 142
-		textaligny 10
-		textscale .22 
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07       
-		forecolor 1 1 1 1
-		visible 0 
-		mouseenter { setCvar "ui_sofia_desc" "Enable dynamic raytraced room acoustics using BSP geometry." }
-		mouseexit { setCvar "ui_sofia_desc" "" }
-	}
-
-	itemDef {
-		name sofiasettings
-		textfont UI_FONT_BIG
-		group system
 		type ITEM_TYPE_SLIDER
 		text "Reverb Intensity"
 		cvarfloat "s_alReverbGain" 1.0 0 2.0
-		rect 300 395 290 12
+		rect 300 380 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3794,7 +3774,7 @@ itemDef {
 		textfont UI_FONT_BIG
 		group system
 		cvar "ui_sofia_desc"
-		rect 300 413 290 12
+		rect 300 398 290 12
 		textalign ITEM_ALIGN_CENTER
 		textalignx 145
 		textaligny 10

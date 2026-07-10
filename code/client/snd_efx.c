@@ -439,7 +439,6 @@ void S_EFX_UpdateGain(float gain) {
 S_EFX_UpdateDynamicReverb
 ==========================
 */
-extern cvar_t *s_alDynamicReverb;
 extern vec3_t lastListenerOrigin;
 
 void S_EFX_UpdateDynamicReverb(void) {
@@ -454,9 +453,7 @@ void S_EFX_UpdateDynamicReverb(void) {
 		return;
 	}
 
-	if (!s_alDynamicReverb || !s_alDynamicReverb->integer) {
-		return;
-	}
+
 
 	// Only trace every 100ms to avoid any performance impact
 	if (now - lastReverbTraceTime < 100 && lastReverbTraceTime != 0) {
