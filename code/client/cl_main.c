@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 // cl_main.c  -- client main loop
 
 #include "client.h"
+#include "../qcommon/gp_jobsystem.h"
 #include "../discord/discord_rpc.h"
 #include <limits.h>
 
@@ -3481,6 +3482,8 @@ void CL_InitRef( void ) {
 	ri.Sys_GLimpSafeInit = Sys_GLimpSafeInit;
 	ri.Sys_GLimpInit = Sys_GLimpInit;
 	ri.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
+	ri.Sys_QueueJob = Sys_QueueJob;
+	ri.Sys_WaitJobs = Sys_WaitJobs;
 
 	ret = GetRefAPI( REF_API_VERSION, &ri );
 

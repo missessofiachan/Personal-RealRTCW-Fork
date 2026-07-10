@@ -24,6 +24,7 @@
 #include "snd_local.h"
 #include "snd_codec.h"
 #include "client.h"
+#include "../qcommon/gp_jobsystem.h"
 
 #ifdef USE_OPENAL
 
@@ -157,6 +158,12 @@ typedef struct alSfx_s
   int				masterLoopSrc;		// All other sources looping this buffer are synced to this master src
 
   void      *voice;
+
+  volatile qboolean isQueued;
+  volatile qboolean loadFinished;
+  volatile qboolean loadFailed;
+  void *tempBuffer;
+  snd_info_t tempInfo;
 } alSfx_t;
 
 static qboolean alBuffersInitialised = qfalse;
@@ -619,11 +626,122 @@ static qboolean S_AL_GenBuffers(ALsizei numBuffers, ALuint *buffers, const char 
   return qtrue;
 }
 
+#include <SDL3/SDL.h>
+
 /*
    =================
-   S_AL_BufferLoad
+   S_AL_BufferLoad Async Helpers
    =================
    */
+static void S_AL_BufferLoad_Job( void *arg ) {
+  sfxHandle_t sfx = (sfxHandle_t)(intptr_t)arg;
+  alSfx_t *curSfx = &knownSfx[sfx];
+  
+  g_asyncLoadActive = qtrue;
+
+  curSfx->tempBuffer = S_CodecLoad(curSfx->filename, &curSfx->tempInfo);
+  if (!curSfx->tempBuffer) {
+    curSfx->loadFailed = qtrue;
+  }
+  curSfx->loadFinished = qtrue;
+
+  g_asyncLoadActive = qfalse;
+}
+
+static void S_AL_BufferLoadAsync(sfxHandle_t sfx) {
+  alSfx_t *curSfx = &knownSfx[sfx];
+
+  if (curSfx->filename[0] == '\0' || curSfx->filename[0] == '*' || curSfx->inMemory || curSfx->isDefault || curSfx->isQueued) {
+    return;
+  }
+
+  curSfx->isQueued = qtrue;
+  curSfx->loadFinished = qfalse;
+  curSfx->loadFailed = qfalse;
+  curSfx->tempBuffer = NULL;
+
+  Sys_QueueJob(S_AL_BufferLoad_Job, (void *)(intptr_t)sfx);
+}
+
+static void S_AL_BufferFinishAsyncLoad(sfxHandle_t sfx) {
+  alSfx_t *curSfx = &knownSfx[sfx];
+  ALenum error;
+  ALuint format;
+  byte dummyData[ 2 ];
+  memset(dummyData, 0, sizeof(dummyData));
+
+  if (!curSfx->loadFinished) {
+    return;
+  }
+
+  if (curSfx->loadFailed || !curSfx->tempBuffer) {
+    S_AL_BufferUseDefault(sfx);
+    curSfx->isQueued = qfalse;
+    return;
+  }
+
+  curSfx->isDefaultChecked = qtrue;
+  format = S_AL_Format(curSfx->tempInfo.width, curSfx->tempInfo.channels);
+
+  if (!S_AL_GenBuffers(1, &curSfx->buffer, curSfx->filename)) {
+    S_AL_BufferUseDefault(sfx);
+    SDL_free(curSfx->tempBuffer);
+    curSfx->tempBuffer = NULL;
+    curSfx->isQueued = qfalse;
+    return;
+  }
+
+  if (curSfx->tempInfo.size == 0) {
+    qalBufferData(curSfx->buffer, AL_FORMAT_MONO16, (void *)dummyData, 2, 22050);
+  } else {
+    qalBufferData(curSfx->buffer, format, curSfx->tempBuffer, curSfx->tempInfo.size, curSfx->tempInfo.rate);
+  }
+
+  error = qalGetError();
+  while (error == AL_OUT_OF_MEMORY) {
+    if (!S_AL_BufferEvict()) {
+      qalDeleteBuffers(1, &curSfx->buffer);
+      S_AL_BufferUseDefault(sfx);
+      SDL_free(curSfx->tempBuffer);
+      curSfx->tempBuffer = NULL;
+      Com_Printf( S_COLOR_RED "ERROR: Out of memory loading %s\n", curSfx->filename);
+      curSfx->isQueued = qfalse;
+      return;
+    }
+    if (curSfx->tempInfo.size == 0) {
+      qalBufferData(curSfx->buffer, AL_FORMAT_MONO16, (void *)dummyData, 2, 22050);
+    } else {
+      qalBufferData(curSfx->buffer, format, curSfx->tempBuffer, curSfx->tempInfo.size, curSfx->tempInfo.rate);
+    }
+    error = qalGetError();
+  }
+
+  if (error != AL_NO_ERROR) {
+    qalDeleteBuffers(1, &curSfx->buffer);
+    S_AL_BufferUseDefault(sfx);
+    SDL_free(curSfx->tempBuffer);
+    curSfx->tempBuffer = NULL;
+    Com_Printf( S_COLOR_RED "ERROR: Can't fill sound buffer for %s - %s\n", curSfx->filename, S_AL_ErrorMsg(error));
+    curSfx->isQueued = qfalse;
+    return;
+  }
+
+  curSfx->info = curSfx->tempInfo;
+  SDL_free(curSfx->tempBuffer);
+  curSfx->tempBuffer = NULL;
+  curSfx->inMemory = qtrue;
+  curSfx->isQueued = qfalse;
+}
+
+static void S_AL_ProcessAsyncLoads(void) {
+  for (int idx = 0; idx < numSfx; idx++) {
+    alSfx_t *curSfx = &knownSfx[idx];
+    if (curSfx->isQueued && curSfx->loadFinished) {
+      S_AL_BufferFinishAsyncLoad(idx);
+    }
+  }
+}
+
 static void S_AL_BufferLoad(sfxHandle_t sfx, qboolean cache)
 {
   ALenum error;
@@ -745,8 +863,16 @@ void S_AL_BufferUse(sfxHandle_t sfx)
   if(knownSfx[sfx].filename[0] == '\0')
     return;
 
-  if((!knownSfx[sfx].inMemory) && (!knownSfx[sfx].isDefault))
-    S_AL_BufferLoad(sfx, qtrue);
+  if((!knownSfx[sfx].inMemory) && (!knownSfx[sfx].isDefault)) {
+    if (knownSfx[sfx].isQueued) {
+      while (!knownSfx[sfx].loadFinished) {
+        SDL_Delay(1);
+      }
+      S_AL_BufferFinishAsyncLoad(sfx);
+    } else {
+      S_AL_BufferLoad(sfx, qtrue);
+    }
+  }
   knownSfx[sfx].lastUsedTime = Sys_Milliseconds();
 }
 
@@ -959,8 +1085,13 @@ sfxHandle_t S_AL_RegisterSound( const char *sample, qboolean compressed )
 {
   sfxHandle_t sfx = S_AL_BufferFind(sample);
 
-  if((!knownSfx[sfx].inMemory) && (!knownSfx[sfx].isDefault))
-    S_AL_BufferLoad(sfx, s_alPrecache->integer);
+  if((!knownSfx[sfx].inMemory) && (!knownSfx[sfx].isDefault)) {
+    if (s_alPrecache->integer) {
+      S_AL_BufferLoadAsync(sfx);
+    } else {
+      S_AL_BufferLoad(sfx, qfalse);
+    }
+  }
   knownSfx[sfx].lastUsedTime = Com_Milliseconds();
 
   if (knownSfx[sfx].isDefault) {
@@ -3037,6 +3168,8 @@ void S_AL_Respatialize( int entityNum, const vec3_t origin, vec3_t axis[3], int 
 void S_AL_Update( void )
 {
   int i;
+
+  S_AL_ProcessAsyncLoads();
 
   if(s_muted->modified)
   {

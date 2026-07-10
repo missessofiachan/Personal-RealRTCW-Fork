@@ -31,6 +31,14 @@ This repository is a modernized, high-performance fork of the Return to Castle W
 * **Model Bounds Loading Fix**: Corrected modelbounds parsing logic.
   * *Benefit*: Prevents collision and tracking errors on world asset clip layers.
 
+### 🧵 Multi-Threaded Architecture & Parallelization (`gp_jobsystem`)
+* **Parallel CPU Skeletal Vertex Skinning (`tr_animation.c`)**: Partitions large skeletal model surfaces (`numVerts > 256`) into 256-vertex chunks and computes skinning/bone lerping across background workers.
+  * *Benefit*: Prevents rendering bottlenecks on the main thread when drawing complex character models or dense crowds.
+* **Thread-Isolated Memory Alignment**: Configures concurrent skinning chunks to write into isolated target blocks to eliminate false cache-line sharing.
+  * *Benefit*: Drops memory controller lock-contention, optimizing memory write speeds.
+* **Asynchronous Background Asset Loading & Decompression (`snd_openal.c` / `snd_codec.c`)**: Offloads file loading and WAV/OGG/Opus decompression tasks to worker threads. Utilizes a thread-safe custom allocator (`S_CodecAllocateTemp`) to safely allocate asset buffers concurrently without corrupting the main engine hunk memory.
+  * *Benefit*: Completely eradicates mid-game micro-stutters and hitching during background asset streaming.
+
 ### 🔊 Dynamic Spatial Audio & Environmental Reverb (OpenAL EFX / EAX)
 * **Dynamic Ray-Traced Reverb**: Casts geometric rays into the map to calculate room volume, outdoor exposure, and structural boundaries.
   * *Benefit*: Dynamically adjusts OpenAL EFX reverb parameters on the fly based on the player's immediate physical environment.

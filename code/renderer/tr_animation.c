@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 
+
 /*
 
 All bones should be an identity orientation to display the mesh exactly
@@ -1041,6 +1042,87 @@ void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList,
 #define DBG_SHOWTIME    ;
 #endif
 
+typedef struct {
+	mdsVertex_t **vertPointers;
+	int start;
+	int end;
+	int baseVertex;
+	mdsBoneFrame_t *bones;
+} mdsSkinningJob_t;
+
+static void RB_SurfaceAnim_Job( void *arg ) {
+	mdsSkinningJob_t *job = (mdsSkinningJob_t *)arg;
+	mdsBoneFrame_t *bones = job->bones;
+	int baseVertex = job->baseVertex;
+	mdsBoneFrame_t *bone;
+
+	for ( int j = job->start; j < job->end; j++ ) {
+		mdsVertex_t *v = job->vertPointers[j];
+		float *tempVert = (float *)(tess.xyz + baseVertex + j);
+		float *tempNormal = (float *)(tess.normal + baseVertex + j);
+		mdsWeight_t *w;
+
+		VectorClear( tempVert );
+
+		w = v->weights;
+		for ( int k = 0 ; k < v->numWeights ; k++, w++ ) {
+			bone = &bones[w->boneIndex];
+			LocalAddScaledMatrixTransformVectorTranslate( w->offset, w->boneWeight, bone->matrix, bone->translation, tempVert );
+		}
+		LocalMatrixTransformVector( v->normal, bones[v->weights[0].boneIndex].matrix, tempNormal );
+
+		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0];
+		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
+	}
+}
+
+typedef struct {
+	mdrVertex_t **vertPointers;
+	int start;
+	int end;
+	int baseVertex;
+	mdrBone_t *bonePtr;
+} mdrSkinningJob_t;
+
+static void RB_MDRSurfaceAnim_Job( void *arg ) {
+	mdrSkinningJob_t *job = (mdrSkinningJob_t *)arg;
+	mdrBone_t *bonePtr = job->bonePtr;
+	int baseVertex = job->baseVertex;
+	mdrBone_t *bone;
+
+	for ( int j = job->start; j < job->end; j++ ) {
+		mdrVertex_t *v = job->vertPointers[j];
+		vec3_t tempVert, tempNormal;
+		mdrWeight_t *w;
+
+		VectorClear( tempVert );
+		VectorClear( tempNormal );
+		w = v->weights;
+		for ( int k = 0 ; k < v->numWeights ; k++, w++ ) {
+			bone = bonePtr + w->boneIndex;
+			
+			tempVert[0] += w->boneWeight * ( DotProduct( bone->matrix[0], w->offset ) + bone->matrix[0][3] );
+			tempVert[1] += w->boneWeight * ( DotProduct( bone->matrix[1], w->offset ) + bone->matrix[1][3] );
+			tempVert[2] += w->boneWeight * ( DotProduct( bone->matrix[2], w->offset ) + bone->matrix[2][3] );
+			
+			tempNormal[0] += w->boneWeight * DotProduct( bone->matrix[0], v->normal );
+			tempNormal[1] += w->boneWeight * DotProduct( bone->matrix[1], v->normal );
+			tempNormal[2] += w->boneWeight * DotProduct( bone->matrix[2], v->normal );
+		}
+
+		tess.xyz[baseVertex + j][0] = tempVert[0];
+		tess.xyz[baseVertex + j][1] = tempVert[1];
+		tess.xyz[baseVertex + j][2] = tempVert[2];
+
+		tess.normal[baseVertex + j][0] = tempNormal[0];
+		tess.normal[baseVertex + j][1] = tempNormal[1];
+		tess.normal[baseVertex + j][2] = tempNormal[2];
+
+		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0];
+		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
+	}
+}
+
 /*
 ==============
 RB_SurfaceAnim
@@ -1172,25 +1254,51 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	//
 	numVerts = surface->numVerts;
 	v = ( mdsVertex_t * )( (byte *)surface + surface->ofsVerts );
-	tempVert = ( float * )( tess.xyz + baseVertex );
-	tempNormal = ( float * )( tess.normal + baseVertex );
-	for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
-		mdsWeight_t *w;
 
-		VectorClear( tempVert );
+	if ( render_count > 256 ) {
+		static mdsVertex_t *mdsVertPointers[4096];
+		static mdsSkinningJob_t mdsJobs[16];
+		int numJobs = 4;
+		int chunkSize = render_count / numJobs;
 
-		w = v->weights;
-		for ( k = 0 ; k < v->numWeights ; k++, w++ ) {
-			bone = &bones[w->boneIndex];
-			LocalAddScaledMatrixTransformVectorTranslate( w->offset, w->boneWeight, bone->matrix, bone->translation, tempVert );
+		// Scan pointers to variable-width vertices on the main thread
+		mdsVertex_t *scanV = v;
+		for ( int idx = 0; idx < render_count; idx++ ) {
+			mdsVertPointers[idx] = scanV;
+			scanV = (mdsVertex_t *)&scanV->weights[scanV->numWeights];
 		}
-		LocalMatrixTransformVector( v->normal, bones[v->weights[0].boneIndex].matrix, tempNormal );
 
-		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0];
-		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
+		for ( int i = 0; i < numJobs; i++ ) {
+			mdsJobs[i].vertPointers = mdsVertPointers;
+			mdsJobs[i].start = i * chunkSize;
+			mdsJobs[i].end = ( i == numJobs - 1 ) ? render_count : ( i + 1 ) * chunkSize;
+			mdsJobs[i].baseVertex = baseVertex;
+			mdsJobs[i].bones = bones;
+			ri.Sys_QueueJob( RB_SurfaceAnim_Job, &mdsJobs[i] );
+		}
+		ri.Sys_WaitJobs();
+	} else {
+		tempVert = ( float * )( tess.xyz + baseVertex );
+		tempNormal = ( float * )( tess.normal + baseVertex );
+		for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
+			mdsWeight_t *w;
 
-		v = (mdsVertex_t *)&v->weights[v->numWeights];
+			VectorClear( tempVert );
+
+			w = v->weights;
+			for ( k = 0 ; k < v->numWeights ; k++, w++ ) {
+				bone = &bones[w->boneIndex];
+				LocalAddScaledMatrixTransformVectorTranslate( w->offset, w->boneWeight, bone->matrix, bone->translation, tempVert );
+			}
+			LocalMatrixTransformVector( v->normal, bones[v->weights[0].boneIndex].matrix, tempNormal );
+
+			tess.texCoords[baseVertex + j][0][0] = v->texCoords[0];
+			tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
+
+			v = (mdsVertex_t *)&v->weights[v->numWeights];
+		}
 	}
+
 
 	DBG_SHOWTIME
 
@@ -1707,40 +1815,66 @@ void RB_MDRSurfaceAnim( mdrSurface_t *surface )
 	//
 	numVerts = surface->numVerts;
 	v = (mdrVertex_t *) ((byte *)surface + surface->ofsVerts);
-	for ( j = 0; j < numVerts; j++ ) 
-	{
-		vec3_t	tempVert, tempNormal;
-		mdrWeight_t	*w;
 
-		VectorClear( tempVert );
-		VectorClear( tempNormal );
-		w = v->weights;
-		for ( k = 0 ; k < v->numWeights ; k++, w++ ) 
-		{
-			bone = bonePtr + w->boneIndex;
-			
-			tempVert[0] += w->boneWeight * ( DotProduct( bone->matrix[0], w->offset ) + bone->matrix[0][3] );
-			tempVert[1] += w->boneWeight * ( DotProduct( bone->matrix[1], w->offset ) + bone->matrix[1][3] );
-			tempVert[2] += w->boneWeight * ( DotProduct( bone->matrix[2], w->offset ) + bone->matrix[2][3] );
-			
-			tempNormal[0] += w->boneWeight * DotProduct( bone->matrix[0], v->normal );
-			tempNormal[1] += w->boneWeight * DotProduct( bone->matrix[1], v->normal );
-			tempNormal[2] += w->boneWeight * DotProduct( bone->matrix[2], v->normal );
+	if ( numVerts > 256 ) {
+		static mdrVertex_t *mdrVertPointers[4096];
+		static mdrSkinningJob_t mdrJobs[16];
+		int numJobs = 4;
+		int chunkSize = numVerts / numJobs;
+
+		// Scan pointers to variable-width vertices on the main thread
+		mdrVertex_t *scanV = v;
+		for ( int idx = 0; idx < numVerts; idx++ ) {
+			mdrVertPointers[idx] = scanV;
+			scanV = (mdrVertex_t *)&scanV->weights[scanV->numWeights];
 		}
 
-		tess.xyz[baseVertex + j][0] = tempVert[0];
-		tess.xyz[baseVertex + j][1] = tempVert[1];
-		tess.xyz[baseVertex + j][2] = tempVert[2];
+		for ( int i = 0; i < numJobs; i++ ) {
+			mdrJobs[i].vertPointers = mdrVertPointers;
+			mdrJobs[i].start = i * chunkSize;
+			mdrJobs[i].end = ( i == numJobs - 1 ) ? numVerts : ( i + 1 ) * chunkSize;
+			mdrJobs[i].baseVertex = baseVertex;
+			mdrJobs[i].bonePtr = bonePtr;
+			ri.Sys_QueueJob( RB_MDRSurfaceAnim_Job, &mdrJobs[i] );
+		}
+		ri.Sys_WaitJobs();
+	} else {
+		for ( j = 0; j < numVerts; j++ ) 
+		{
+			vec3_t	tempVert, tempNormal;
+			mdrWeight_t	*w;
 
-		tess.normal[baseVertex + j][0] = tempNormal[0];
-		tess.normal[baseVertex + j][1] = tempNormal[1];
-		tess.normal[baseVertex + j][2] = tempNormal[2];
+			VectorClear( tempVert );
+			VectorClear( tempNormal );
+			w = v->weights;
+			for ( k = 0 ; k < v->numWeights ; k++, w++ ) 
+			{
+				bone = bonePtr + w->boneIndex;
+				
+				tempVert[0] += w->boneWeight * ( DotProduct( bone->matrix[0], w->offset ) + bone->matrix[0][3] );
+				tempVert[1] += w->boneWeight * ( DotProduct( bone->matrix[1], w->offset ) + bone->matrix[1][3] );
+				tempVert[2] += w->boneWeight * ( DotProduct( bone->matrix[2], w->offset ) + bone->matrix[2][3] );
+				
+				tempNormal[0] += w->boneWeight * DotProduct( bone->matrix[0], v->normal );
+				tempNormal[1] += w->boneWeight * DotProduct( bone->matrix[1], v->normal );
+				tempNormal[2] += w->boneWeight * DotProduct( bone->matrix[2], v->normal );
+			}
 
-		tess.texCoords[baseVertex + j][0][0] = v->texCoords[0];
-		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
+			tess.xyz[baseVertex + j][0] = tempVert[0];
+			tess.xyz[baseVertex + j][1] = tempVert[1];
+			tess.xyz[baseVertex + j][2] = tempVert[2];
 
-		v = (mdrVertex_t *)&v->weights[v->numWeights];
+			tess.normal[baseVertex + j][0] = tempNormal[0];
+			tess.normal[baseVertex + j][1] = tempNormal[1];
+			tess.normal[baseVertex + j][2] = tempNormal[2];
+
+			tess.texCoords[baseVertex + j][0][0] = v->texCoords[0];
+			tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
+
+			v = (mdrVertex_t *)&v->weights[v->numWeights];
+		}
 	}
+
 
 	tess.numVertexes += surface->numVerts;
 }

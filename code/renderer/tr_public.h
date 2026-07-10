@@ -31,7 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_types.h"
 
-#define REF_API_VERSION     8
+#define REF_API_VERSION     9
 
 //
 // these are the functions exported by the refresh module
@@ -199,6 +199,8 @@ typedef struct {
 	void	(*Sys_GLimpSafeInit)( void );
 	void	(*Sys_GLimpInit)( void );
 	qboolean (*Sys_LowPhysicalMemory)( void );
+	void (*Sys_QueueJob)( void ( *work )( void * ), void *arg );
+	void (*Sys_WaitJobs)( void );
 } refimport_t;
 
 

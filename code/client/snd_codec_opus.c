@@ -421,7 +421,7 @@ void *S_OggOpus_CodecLoad(const char *filename, snd_info_t *info)
 
 	// allocate a buffer
 	// this buffer must be free-ed by the caller of this function
-    	buffer = Hunk_AllocateTempMemory(info->size);
+    	buffer = S_CodecAllocateTemp(info->size);
 	if(!buffer)
 	{
 		S_OggOpus_CodecCloseStream(stream);
@@ -435,7 +435,7 @@ void *S_OggOpus_CodecLoad(const char *filename, snd_info_t *info)
 	// we don't even have read a single byte
 	if(bytesRead <= 0)
 	{
-		Hunk_FreeTempMemory(buffer);
+		S_CodecFreeTemp(buffer);
 		S_OggOpus_CodecCloseStream(stream);
 
 		return NULL;	
