@@ -341,6 +341,9 @@ typedef struct {
 
 static fileHandleData_t fsh[MAX_FILE_HANDLES];
 
+#include <SDL3/SDL_mutex.h>
+static SDL_Mutex *fsvfs_mutex = NULL;
+
 // TTimo - https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=540
 // wether we did a reorder on the current search path when joining the server
 static qboolean fs_reordered;
@@ -1771,7 +1774,13 @@ For some reason, other dll's can't just cal fclose()
 on files returned by FS_FOpenFile...
 ==============
 */
+void FS_FCloseFile_Internal( fileHandle_t f );
 void FS_FCloseFile( fileHandle_t f ) {
+	if (fsvfs_mutex) SDL_LockMutex(fsvfs_mutex);
+	FS_FCloseFile_Internal(f);
+	if (fsvfs_mutex) SDL_UnlockMutex(fsvfs_mutex);
+}
+void FS_FCloseFile_Internal( fileHandle_t f ) {
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
 	}
@@ -2395,7 +2404,15 @@ Used for streaming data out of either a
 separate file or a ZIP file.
 ===========
 */
-long FS_FOpenFileRead(const char *filename, fileHandle_t *file, qboolean uniqueFILE)
+long FS_FOpenFileRead_Internal(const char *filename, fileHandle_t *file, qboolean uniqueFILE);
+long FS_FOpenFileRead(const char *filename, fileHandle_t *file, qboolean uniqueFILE) {
+	long res;
+	if (fsvfs_mutex) SDL_LockMutex(fsvfs_mutex);
+	res = FS_FOpenFileRead_Internal(filename, file, uniqueFILE);
+	if (fsvfs_mutex) SDL_UnlockMutex(fsvfs_mutex);
+	return res;
+}
+long FS_FOpenFileRead_Internal(const char *filename, fileHandle_t *file, qboolean uniqueFILE)
 {
 	searchpath_t *search;
 	long len;
@@ -2591,7 +2608,15 @@ FS_Read
 Properly handles partial reads
 =================
 */
+int FS_Read_Internal( void *buffer, int len, fileHandle_t f );
 int FS_Read( void *buffer, int len, fileHandle_t f ) {
+	int res;
+	if (fsvfs_mutex) SDL_LockMutex(fsvfs_mutex);
+	res = FS_Read_Internal(buffer, len, f);
+	if (fsvfs_mutex) SDL_UnlockMutex(fsvfs_mutex);
+	return res;
+}
+int FS_Read_Internal( void *buffer, int len, fileHandle_t f ) {
 	int block, remaining;
 	int read;
 	byte    *buf;
@@ -2710,7 +2735,15 @@ FS_Seek
 
 =================
 */
+int FS_Seek_Internal( fileHandle_t f, long offset, int origin );
 int FS_Seek( fileHandle_t f, long offset, int origin ) {
+	int res;
+	if (fsvfs_mutex) SDL_LockMutex(fsvfs_mutex);
+	res = FS_Seek_Internal(f, offset, origin);
+	if (fsvfs_mutex) SDL_UnlockMutex(fsvfs_mutex);
+	return res;
+}
+int FS_Seek_Internal( fileHandle_t f, long offset, int origin ) {
 	int _origin;
 
 	if ( !fs_searchpaths ) {
@@ -5179,6 +5212,9 @@ is resetting due to a game change
 ================
 */
 void FS_InitFilesystem( void ) {
+	if (!fsvfs_mutex) {
+		fsvfs_mutex = SDL_CreateMutex();
+	}
 	// allow command line parms to override our defaults
 	// we have to specially handle this, because normal command
 	// line variable sets don't happen until after the filesystem
@@ -5360,7 +5396,15 @@ int     FS_FOpenFileByMode( const char *qpath, fileHandle_t *f, fsMode_t mode ) 
 	return r;
 }
 
+int FS_FTell_Internal( fileHandle_t f );
 int     FS_FTell( fileHandle_t f ) {
+	int res;
+	if (fsvfs_mutex) SDL_LockMutex(fsvfs_mutex);
+	res = FS_FTell_Internal(f);
+	if (fsvfs_mutex) SDL_UnlockMutex(fsvfs_mutex);
+	return res;
+}
+int     FS_FTell_Internal( fileHandle_t f ) {
 	int pos;
 	if ( fsh[f].zipFile == qtrue ) {
 		pos = unztell( fsh[f].handleFiles.file.z );

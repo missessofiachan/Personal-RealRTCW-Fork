@@ -235,3 +235,23 @@ void S_CodecUtilClose(snd_stream_t **stream)
 	Z_Free(*stream);
 	*stream = NULL;
 }
+
+#include <SDL3/SDL.h>
+
+__thread qboolean g_asyncLoadActive = qfalse;
+
+void *S_CodecAllocateTemp(int size) {
+	if (g_asyncLoadActive) {
+		return SDL_malloc(size);
+	}
+	return Hunk_AllocateTempMemory(size);
+}
+
+void S_CodecFreeTemp(void *ptr) {
+	if (g_asyncLoadActive) {
+		SDL_free(ptr);
+	} else {
+		Hunk_FreeTempMemory(ptr);
+	}
+}
+
