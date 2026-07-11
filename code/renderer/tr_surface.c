@@ -552,54 +552,56 @@ static void DoRailCore( const vec3_t start, const vec3_t end, const vec3_t up, f
 	float spanWidth2;
 	int vbase;
 	float t = len / 256.0f;
+	unsigned int packedCoreColor;
+	unsigned int packedFullColor;
+	byte coreColor[4];
 
 	RB_CHECKOVERFLOW( 4, 6 );
 
 	vbase = tess.numVertexes;
-
 	spanWidth2 = -spanWidth;
 
-	// FIXME: use quad stamp?
-	VectorMA( start, spanWidth, up, tess.xyz[tess.numVertexes] );
-	tess.texCoords[tess.numVertexes][0][0] = 0;
-	tess.texCoords[tess.numVertexes][0][1] = 0;
-	tess.vertexColors[tess.numVertexes][0] = backEnd.currentEntity->e.shaderRGBA[0] * 0.25;
-	tess.vertexColors[tess.numVertexes][1] = backEnd.currentEntity->e.shaderRGBA[1] * 0.25;
-	tess.vertexColors[tess.numVertexes][2] = backEnd.currentEntity->e.shaderRGBA[2] * 0.25;
-	tess.numVertexes++;
+	// Scale and pack colors safely into unified 32-bit blocks
+	coreColor[0] = (byte)(backEnd.currentEntity->e.shaderRGBA[0] * 0.25f);
+	coreColor[1] = (byte)(backEnd.currentEntity->e.shaderRGBA[1] * 0.25f);
+	coreColor[2] = (byte)(backEnd.currentEntity->e.shaderRGBA[2] * 0.25f);
+	coreColor[3] = backEnd.currentEntity->e.shaderRGBA[3];
+	
+	packedCoreColor = *(unsigned int *)coreColor;
+	packedFullColor = *(unsigned int *)backEnd.currentEntity->e.shaderRGBA;
 
-	VectorMA( start, spanWidth2, up, tess.xyz[tess.numVertexes] );
-	tess.texCoords[tess.numVertexes][0][0] = 0;
-	tess.texCoords[tess.numVertexes][0][1] = 1;
-	tess.vertexColors[tess.numVertexes][0] = backEnd.currentEntity->e.shaderRGBA[0];
-	tess.vertexColors[tess.numVertexes][1] = backEnd.currentEntity->e.shaderRGBA[1];
-	tess.vertexColors[tess.numVertexes][2] = backEnd.currentEntity->e.shaderRGBA[2];
-	tess.numVertexes++;
+	// Populate the 4 quad corner vertices efficiently
+	VectorMA( start, spanWidth, up, tess.xyz[vbase] );
+	tess.texCoords[vbase][0][0] = tess.texCoords[vbase][1][0] = 0.0f;
+	tess.texCoords[vbase][0][1] = tess.texCoords[vbase][1][1] = 0.0f;
+	*(unsigned int *)&tess.vertexColors[vbase] = packedCoreColor;
 
-	VectorMA( end, spanWidth, up, tess.xyz[tess.numVertexes] );
+	VectorMA( start, spanWidth2, up, tess.xyz[vbase + 1] );
+	tess.texCoords[vbase + 1][0][0] = tess.texCoords[vbase + 1][1][0] = 0.0f;
+	tess.texCoords[vbase + 1][0][1] = tess.texCoords[vbase + 1][1][1] = 1.0f;
+	*(unsigned int *)&tess.vertexColors[vbase + 1] = packedFullColor;
 
-	tess.texCoords[tess.numVertexes][0][0] = t;
-	tess.texCoords[tess.numVertexes][0][1] = 0;
-	tess.vertexColors[tess.numVertexes][0] = backEnd.currentEntity->e.shaderRGBA[0];
-	tess.vertexColors[tess.numVertexes][1] = backEnd.currentEntity->e.shaderRGBA[1];
-	tess.vertexColors[tess.numVertexes][2] = backEnd.currentEntity->e.shaderRGBA[2];
-	tess.numVertexes++;
+	VectorMA( end, spanWidth, up, tess.xyz[vbase + 2] );
+	tess.texCoords[vbase + 2][0][0] = tess.texCoords[vbase + 2][1][0] = t;
+	tess.texCoords[vbase + 2][0][1] = tess.texCoords[vbase + 2][1][1] = 0.0f;
+	*(unsigned int *)&tess.vertexColors[vbase + 2] = packedFullColor;
 
-	VectorMA( end, spanWidth2, up, tess.xyz[tess.numVertexes] );
-	tess.texCoords[tess.numVertexes][0][0] = t;
-	tess.texCoords[tess.numVertexes][0][1] = 1;
-	tess.vertexColors[tess.numVertexes][0] = backEnd.currentEntity->e.shaderRGBA[0];
-	tess.vertexColors[tess.numVertexes][1] = backEnd.currentEntity->e.shaderRGBA[1];
-	tess.vertexColors[tess.numVertexes][2] = backEnd.currentEntity->e.shaderRGBA[2];
-	tess.numVertexes++;
+	VectorMA( end, spanWidth2, up, tess.xyz[vbase + 3] );
+	tess.texCoords[vbase + 3][0][0] = tess.texCoords[vbase + 3][1][0] = t;
+	tess.texCoords[vbase + 3][0][1] = tess.texCoords[vbase + 3][1][1] = 1.0f;
+	*(unsigned int *)&tess.vertexColors[vbase + 3] = packedFullColor;
 
-	tess.indexes[tess.numIndexes++] = vbase;
-	tess.indexes[tess.numIndexes++] = vbase + 1;
-	tess.indexes[tess.numIndexes++] = vbase + 2;
+	// Fast index buffer serialization mapping
+	int idxBase = tess.numIndexes;
+	tess.indexes[idxBase + 0] = vbase;
+	tess.indexes[idxBase + 1] = vbase + 1;
+	tess.indexes[idxBase + 2] = vbase + 2;
+	tess.indexes[idxBase + 3] = vbase + 2;
+	tess.indexes[idxBase + 4] = vbase + 1;
+	tess.indexes[idxBase + 5] = vbase + 3;
 
-	tess.indexes[tess.numIndexes++] = vbase + 2;
-	tess.indexes[tess.numIndexes++] = vbase + 1;
-	tess.indexes[tess.numIndexes++] = vbase + 3;
+	tess.numIndexes  += 6;
+	tess.numVertexes += 4;
 }
 
 static void DoRailDiscs( int numSegs, const vec3_t start, const vec3_t dir, const vec3_t right, const vec3_t up ) {
