@@ -672,96 +672,62 @@ static void DoRailDiscs( int numSegs, const vec3_t start, const vec3_t dir, cons
 ** RB_SurfaceRailRinges
 */
 static void RB_SurfaceRailRings( void ) {
-	refEntity_t *e;
-	int numSegs;
-	int len;
-	vec3_t vec;
-	vec3_t right, up;
-	vec3_t start, end;
+	refEntity_t *e = &backEnd.currentEntity->e;
+	int numSegs, len;
+	vec3_t vec, right, up;
 
-	e = &backEnd.currentEntity->e;
-
-	VectorCopy( e->oldorigin, start );
-	VectorCopy( e->origin, end );
-
-	// compute variables
-	VectorSubtract( end, start, vec );
+	VectorSubtract( e->origin, e->oldorigin, vec );
 	len = VectorNormalize( vec );
 	MakeNormalVectors( vec, right, up );
-	numSegs = ( len ) / r_railSegmentLength->value;
+	
+	numSegs = len / r_railSegmentLength->value;
 	if ( numSegs <= 0 ) {
 		numSegs = 1;
 	}
 
 	VectorScale( vec, r_railSegmentLength->value, vec );
-
-	DoRailDiscs( numSegs, start, vec, right, up );
+	DoRailDiscs( numSegs, e->oldorigin, vec, right, up );
 }
 
-/*
-** RB_SurfaceRailCore
-*/
 static void RB_SurfaceRailCore( void ) {
-	refEntity_t *e;
+	refEntity_t *e = &backEnd.currentEntity->e;
 	int len;
-	vec3_t right;
-	vec3_t vec;
-	vec3_t start, end;
-	vec3_t v1, v2;
+	vec3_t right, vec, v1, v2;
 
-	e = &backEnd.currentEntity->e;
-
-	VectorCopy( e->oldorigin, start );
-	VectorCopy( e->origin, end );
-
-	VectorSubtract( end, start, vec );
+	VectorSubtract( e->origin, e->oldorigin, vec );
 	len = VectorNormalize( vec );
 
-	// compute side vector
-	VectorSubtract( start, backEnd.viewParms.or.origin, v1 );
+	VectorSubtract( e->oldorigin, backEnd.viewParms.or.origin, v1 );
 	VectorNormalize( v1 );
-	VectorSubtract( end, backEnd.viewParms.or.origin, v2 );
+	VectorSubtract( e->origin, backEnd.viewParms.or.origin, v2 );
 	VectorNormalize( v2 );
+	
 	CrossProduct( v1, v2, right );
 	VectorNormalize( right );
 
-	DoRailCore( start, end, right, len, r_railCoreWidth->integer );
+	DoRailCore( e->oldorigin, e->origin, right, (float)len, (float)r_railCoreWidth->integer );
 }
 
-/*
-** RB_SurfaceLightningBolt
-*/
 static void RB_SurfaceLightningBolt( void ) {
-	refEntity_t *e;
-	int len;
-	vec3_t right;
-	vec3_t vec;
-	vec3_t start, end;
-	vec3_t v1, v2;
-	int i;
+	refEntity_t *e = &backEnd.currentEntity->e;
+	int len, i;
+	vec3_t right, vec, v1, v2;
 
-	e = &backEnd.currentEntity->e;
-
-	VectorCopy( e->oldorigin, end );
-	VectorCopy( e->origin, start );
-
-	// compute variables
-	VectorSubtract( end, start, vec );
+	VectorSubtract( e->oldorigin, e->origin, vec );
 	len = VectorNormalize( vec );
 
-	// compute side vector
-	VectorSubtract( start, backEnd.viewParms.or.origin, v1 );
+	VectorSubtract( e->origin, backEnd.viewParms.or.origin, v1 );
 	VectorNormalize( v1 );
-	VectorSubtract( end, backEnd.viewParms.or.origin, v2 );
+	VectorSubtract( e->oldorigin, backEnd.viewParms.or.origin, v2 );
 	VectorNormalize( v2 );
+	
 	CrossProduct( v1, v2, right );
 	VectorNormalize( right );
 
 	for ( i = 0 ; i < 4 ; i++ ) {
 		vec3_t temp;
-
-		DoRailCore( start, end, right, len, 8 );
-		RotatePointAroundVector( temp, vec, right, 45 );
+		DoRailCore( e->origin, e->oldorigin, right, (float)len, 8.0f );
+		RotatePointAroundVector( temp, vec, right, 45.0f );
 		VectorCopy( temp, right );
 	}
 }
