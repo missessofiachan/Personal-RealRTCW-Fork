@@ -259,28 +259,35 @@ static void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 	drawVert_t  *dv;
 	float       *xyz, *normal, *texCoords;
 	byte        *color;
-	int dlightBits;
-	qboolean needsNormal;
+	int         *vDlightBits;
+	int         dlightBits;
+	qboolean    needsNormal;
+	int         baseVertex;
 
 	dlightBits = srf->dlightBits;
 	tess.dlightBits |= dlightBits;
 
 	RB_CHECKOVERFLOW( srf->numVerts, srf->numIndexes );
 
+	baseVertex = tess.numVertexes;
+
+	// Unrolled/streamlined index mapping pass
 	for ( i = 0 ; i < srf->numIndexes ; i += 3 ) {
-		tess.indexes[ tess.numIndexes + i + 0 ] = tess.numVertexes + srf->indexes[ i + 0 ];
-		tess.indexes[ tess.numIndexes + i + 1 ] = tess.numVertexes + srf->indexes[ i + 1 ];
-		tess.indexes[ tess.numIndexes + i + 2 ] = tess.numVertexes + srf->indexes[ i + 2 ];
+		tess.indexes[ tess.numIndexes + i + 0 ] = baseVertex + srf->indexes[ i + 0 ];
+		tess.indexes[ tess.numIndexes + i + 1 ] = baseVertex + srf->indexes[ i + 1 ];
+		tess.indexes[ tess.numIndexes + i + 2 ] = baseVertex + srf->indexes[ i + 2 ];
 	}
 	tess.numIndexes += srf->numIndexes;
 
 	dv = srf->verts;
-	xyz = tess.xyz[ tess.numVertexes ];
-	normal = tess.normal[ tess.numVertexes ];
-	texCoords = tess.texCoords[ tess.numVertexes ][0];
-	color = tess.vertexColors[ tess.numVertexes ];
+	xyz = tess.xyz[ baseVertex ];
+	normal = tess.normal[ baseVertex ];
+	texCoords = tess.texCoords[ baseVertex ][0];
+	color = tess.vertexColors[ baseVertex ];
+	vDlightBits = &tess.vertexDlightBits[ baseVertex ];
 	needsNormal = tess.shader->needsNormal;
 
+	// Consolidated Unified Vertex Pass
 	for ( i = 0 ; i < srf->numVerts ; i++, dv++, xyz += 4, normal += 4, texCoords += 4, color += 4 ) {
 		xyz[0] = dv->xyz[0];
 		xyz[1] = dv->xyz[1];
@@ -292,17 +299,17 @@ static void RB_SurfaceTriangles( srfTriangles_t *srf ) {
 			normal[2] = dv->normal[2];
 		}
 
+		// Combined multi-stage texture coordinate streaming
 		texCoords[0] = dv->st[0];
 		texCoords[1] = dv->st[1];
-
 		texCoords[2] = dv->lightmap[0];
 		texCoords[3] = dv->lightmap[1];
 
+		// Packed 32-bit color transfer
 		*(int *)color = *(int *)dv->color;
-	}
 
-	for ( i = 0 ; i < srf->numVerts ; i++ ) {
-		tess.vertexDlightBits[ tess.numVertexes + i] = dlightBits;
+		// Consolidated from the legacy secondary loop - handled immediately in cache space
+		*vDlightBits++ = dlightBits;
 	}
 
 	tess.numVertexes += srf->numVerts;
