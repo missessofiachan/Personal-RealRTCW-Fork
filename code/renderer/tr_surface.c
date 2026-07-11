@@ -146,7 +146,7 @@ RB_AddQuadStamp
 ==============
 */
 void RB_AddQuadStamp( vec3_t origin, vec3_t left, vec3_t up, byte *color ) {
-	RB_AddQuadStampExt( origin, left, up, color, 0, 0, 1, 1 );
+	RB_AddQuadStampExt( origin, left, up, color, 0.0f, 0.0f, 1.0f, 1.0f );
 }
 
 /*
