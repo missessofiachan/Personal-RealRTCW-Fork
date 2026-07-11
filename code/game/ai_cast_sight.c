@@ -67,36 +67,16 @@ AICast_InFieldOfVision
 ==============
 */
 qboolean AICast_InFieldOfVision( vec3_t viewangles, float fov, vec3_t angles ) {
-	int i;
-	float diff, angle;
+	vec3_t forward_view, forward_target;
+	float dot, threshold;
 
-	for ( i = 0; i < 2; i++ )
-	{
-		angle = AngleMod( viewangles[i] );
-		angles[i] = AngleMod( angles[i] );
-		diff = angles[i] - angle;
-		if ( angles[i] > angle ) {
-			if ( diff > 180.0 ) {
-				diff -= 360.0;
-			}
-		} else
-		{
-			if ( diff < -180.0 ) {
-				diff += 360.0;
-			}
-		}
-		if ( diff > 0 ) {
-			if ( diff > fov * 0.5 ) {
-				return qfalse;
-			}
-		} else
-		{
-			if ( diff < -fov * 0.5 ) {
-				return qfalse;
-			}
-		}
-	}
-	return qtrue;
+	AngleVectors( viewangles, forward_view, NULL, NULL );
+	AngleVectors( angles, forward_target, NULL, NULL );
+
+	dot = DotProduct( forward_view, forward_target );
+	threshold = cosf( ( fov * 0.5f ) * ( M_PI / 180.0f ) );
+
+	return ( dot >= threshold ) ? qtrue : qfalse;
 }
 
 /*
