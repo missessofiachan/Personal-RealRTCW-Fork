@@ -1364,49 +1364,31 @@ static void RB_SurfaceAxis( void ) {
 	GL_Bind( tr.whiteImage );
 	GL_State( GLS_DEFAULT );
 	qglLineWidth( 3 );
-#ifdef USE_OPENGLES
-	GLfloat col[] = {
-	  1,0,0, 1,
-	  1,0,0, 1,
-	  0,1,0, 1,
-	  0,1,0, 1,
-	  0,0,1, 1,
-	  0,0,1, 1
-	 };
-	 GLfloat vtx[] = {
-	  0,0,0,
-	  16,0,0,
-	  0,0,0,
-	  0,16,0,
-	  0,0,0,
-	  0,0,16
-	 };
+
+	static const GLfloat col[] = {
+		1.0f, 0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f, 1.0f, // Red X Axis
+		0.0f, 1.0f, 0.0f, 1.0f,  0.0f, 1.0f, 0.0f, 1.0f, // Green Y Axis
+		0.0f, 0.0f, 1.0f, 1.0f,  0.0f, 0.0f, 1.0f, 1.0f  // Blue Z Axis
+	};
+	static const GLfloat vtx[] = {
+		0.0f, 0.0f, 0.0f,  16.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f,  0.0f, 16.0f, 0.0f,
+		0.0f, 0.0f, 0.0f,  0.0f, 0.0f, 16.0f
+	};
+
 	GLboolean text = qglIsEnabled(GL_TEXTURE_COORD_ARRAY);
 	GLboolean glcol = qglIsEnabled(GL_COLOR_ARRAY);
-	if (text)
-		qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
-	if (!glcol)
-		qglEnableClientState( GL_COLOR_ARRAY);
-	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, col );
-	qglVertexPointer (3, GL_FLOAT, 0, vtx);
-	qglDrawArrays(GL_LINES, 0, 6);
-	if (text)
-		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-	if (!glcol)
-		qglDisableClientState( GL_COLOR_ARRAY);
-#else
-	qglBegin( GL_LINES );
-	qglColor3f( 1,0,0 );
-	qglVertex3f( 0,0,0 );
-	qglVertex3f( 16,0,0 );
-	qglColor3f( 0,1,0 );
-	qglVertex3f( 0,0,0 );
-	qglVertex3f( 0,16,0 );
-	qglColor3f( 0,0,1 );
-	qglVertex3f( 0,0,0 );
-	qglVertex3f( 0,0,16 );
-	qglEnd();
-#endif
+	
+	if (text) qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
+	if (!glcol) qglEnableClientState( GL_COLOR_ARRAY );
+
+	qglColorPointer( 4, GL_FLOAT, 0, col );
+	qglVertexPointer( 3, GL_FLOAT, 0, vtx );
+	qglDrawArrays( GL_LINES, 0, 6 );
+
+	if (text) qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
+	if (!glcol) qglDisableClientState( GL_COLOR_ARRAY );
+
 	qglLineWidth( 1 );
 }
 
