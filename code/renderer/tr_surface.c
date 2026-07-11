@@ -476,68 +476,74 @@ static void RB_SurfaceBeam( void ) {
 	vec3_t direction, normalized_direction;
 	vec3_t start_points[NUM_BEAM_SEGS], end_points[NUM_BEAM_SEGS];
 	vec3_t oldorigin, origin;
+	int vbase;
+	unsigned int packedColor;
 
 	e = &backEnd.currentEntity->e;
 
-	oldorigin[0] = e->oldorigin[0];
-	oldorigin[1] = e->oldorigin[1];
-	oldorigin[2] = e->oldorigin[2];
+	VectorCopy(e->oldorigin, oldorigin);
+	VectorCopy(e->origin, origin);
 
-	origin[0] = e->origin[0];
-	origin[1] = e->origin[1];
-	origin[2] = e->origin[2];
-
-	normalized_direction[0] = direction[0] = oldorigin[0] - origin[0];
-	normalized_direction[1] = direction[1] = oldorigin[1] - origin[1];
-	normalized_direction[2] = direction[2] = oldorigin[2] - origin[2];
+	VectorSubtract(oldorigin, origin, direction);
+	VectorCopy(direction, normalized_direction);
 
 	if ( VectorNormalize( normalized_direction ) == 0 ) {
 		return;
 	}
 
 	PerpendicularVector( perpvec, normalized_direction );
+	VectorScale( perpvec, 4.0f, perpvec );
 
-	VectorScale( perpvec, 4, perpvec );
-
-	for ( i = 0; i < NUM_BEAM_SEGS ; i++ )
-	{
-		RotatePointAroundVector( start_points[i], normalized_direction, perpvec, ( 360.0 / NUM_BEAM_SEGS ) * i );
-//		VectorAdd( start_points[i], origin, start_points[i] );
+	for ( i = 0; i < NUM_BEAM_SEGS ; i++ ) {
+		RotatePointAroundVector( start_points[i], normalized_direction, perpvec, ( 360.0f / NUM_BEAM_SEGS ) * i );
 		VectorAdd( start_points[i], direction, end_points[i] );
 	}
 
-	GL_Bind( tr.whiteImage );
+	// Request structural memory allocations directly inside the unified global back-end array templates
+	RB_CheckOverflow( NUM_BEAM_SEGS * 2, NUM_BEAM_SEGS * 6 );
+	vbase = tess.numVertexes;
+	packedColor = *(unsigned int *)e->shaderRGBA;
 
-	GL_State( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE );
+	// Populate vertex attributes directly into continuous memory buffers
+	for ( i = 0; i < NUM_BEAM_SEGS; i++ ) {
+		int nv = vbase + (i * 2);
+		float texS = (float)i / NUM_BEAM_SEGS;
+		
+		// Beam Starting Root Point Nodes
+		VectorCopy(start_points[i], tess.xyz[nv]);
+		tess.texCoords[nv][0][0] = tess.texCoords[nv][1][0] = texS;
+		tess.texCoords[nv][0][1] = tess.texCoords[nv][1][1] = 0.0f;
+		*(unsigned int *)&tess.vertexColors[nv] = packedColor;
 
-	qglColor3f( 1, 0, 0 );
-
-#ifdef USE_OPENGLES
-	GLboolean text = qglIsEnabled(GL_TEXTURE_COORD_ARRAY);
-	GLboolean glcol = qglIsEnabled(GL_COLOR_ARRAY);
-	if (glcol)
-		qglDisableClientState(GL_COLOR_ARRAY);
-	if (text)
-		qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
-	GLfloat vtx[NUM_BEAM_SEGS*6+6];
-	for ( i = 0; i <= NUM_BEAM_SEGS; i++ ) {
-		memcpy(vtx+i*6, start_points[ i % NUM_BEAM_SEGS], sizeof(GLfloat)*3);
-		memcpy(vtx+i*6+3, end_points[ i % NUM_BEAM_SEGS], sizeof(GLfloat)*3);
+		// Beam Terminal Target Point Nodes
+		VectorCopy(end_points[i], tess.xyz[nv + 1]);
+		tess.texCoords[nv + 1][0][0] = tess.texCoords[nv + 1][1][0] = texS;
+		tess.texCoords[nv + 1][0][1] = tess.texCoords[nv + 1][1][1] = 1.0f;
+		*(unsigned int *)&tess.vertexColors[nv + 1] = packedColor;
 	}
-	qglVertexPointer (3, GL_FLOAT, 0, vtx);
-	qglDrawArrays(GL_TRIANGLE_STRIP, 0, NUM_BEAM_SEGS*2+2);
-	if (glcol)
-		qglEnableClientState(GL_COLOR_ARRAY);
-	if (text)
-		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-#else
-	qglBegin( GL_TRIANGLE_STRIP );
-	for ( i = 0; i <= NUM_BEAM_SEGS; i++ ) {
-		qglVertex3fv( start_points[ i % NUM_BEAM_SEGS] );
-		qglVertex3fv( end_points[ i % NUM_BEAM_SEGS] );
+
+	// Dynamic quad layout triangulation loops to prevent CPU/GPU pipeline stalls
+	int idxBase = tess.numIndexes;
+	for ( i = 0; i < NUM_BEAM_SEGS; i++ ) {
+		int iNext = (i + 1) % NUM_BEAM_SEGS;
+		int v1 = vbase + (i * 2);
+		int v2 = v1 + 1;
+		int v3 = vbase + (iNext * 2);
+		int v4 = v3 + 1;
+
+		tess.indexes[idxBase + 0] = v1;
+		tess.indexes[idxBase + 1] = v2;
+		tess.indexes[idxBase + 2] = v3;
+
+		tess.indexes[idxBase + 3] = v3;
+		tess.indexes[idxBase + 4] = v2;
+		tess.indexes[idxBase + 5] = v4;
+
+		idxBase += 6;
 	}
-	qglEnd();
-#endif
+
+	tess.numIndexes  = idxBase;
+	tess.numVertexes += (NUM_BEAM_SEGS * 2);
 }
 
 //================================================================================
