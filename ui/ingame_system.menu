@@ -1321,9 +1321,10 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		name sofiasettings
 		textfont UI_FONT_BIG
 		group grpsystem
-		type ITEM_TYPE_YESNO
+		type ITEM_TYPE_MULTI
 		text "HRTF (Headphones)"
 		cvar "s_alHRTF"
+		cvarFloatList { "Disabled" 0 "Enabled" 1 "Forced" 2 }
 		rect 82 205 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
@@ -1333,10 +1334,11 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
-		mouseenter { setCvar "ui_sofia_desc" "Toggle Head-Related Transfer Function (HRTF) 3D audio." }
+		mouseenter { setCvar "ui_sofia_desc" "Toggle/Force Head-Related Transfer Function (HRTF) 3D audio." }
 		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
+	/*
 	itemDef {
 		name sofiasettings
 		textfont UI_FONT_BIG
@@ -1374,6 +1376,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		mouseenter { setCvar "ui_sofia_desc" "Cycle available HRTF profiles for optimal 3D positioning." }
 		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
+	*/
 
 	itemDef {
 		name sofiasettings
@@ -1381,7 +1384,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		group grpsystem
 		type ITEM_TYPE_TEXT
 		text "Audio Device"
-		rect 82 235 290 12
+		rect 82 220 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1399,7 +1402,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		group grpsystem
 		type ITEM_TYPE_BUTTON
 		cvar "s_alDevice"
-		rect 82 235 290 12
+		rect 82 220 290 12
 		textalign ITEM_ALIGN_LEFT
 		textalignx 150
 		textaligny 10
@@ -1420,7 +1423,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_YESNO
 		text "Environmental Reverb"
 		cvar "s_alReverb"
-		rect 82 250 290 12
+		rect 82 235 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1440,7 +1443,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_YESNO
 		text "Audio Occlusion"
 		cvar "s_alOcclusion"
-		rect 82 265 290 12
+		rect 82 250 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1460,7 +1463,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		type ITEM_TYPE_SLIDER
 		text "Reverb Intensity"
 		cvarfloat "s_alReverbGain" 1.0 0 2.0
-		rect 82 280 290 12
+		rect 82 265 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -1478,7 +1481,7 @@ open in_snd_restart_popmenu ; hide sound ; hide sofiasettings ; hide applysystem
 		textfont UI_FONT_BIG
 		group grpsystem
 		cvar "ui_sofia_desc"
-		rect 82 298 290 12
+		rect 82 283 290 12
 		textalign ITEM_ALIGN_CENTER
 		textalignx 145
 		textaligny 10

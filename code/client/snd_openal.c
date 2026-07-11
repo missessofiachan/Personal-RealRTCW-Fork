@@ -3239,7 +3239,13 @@ void S_AL_Update( void )
   {
     if (qalcResetDeviceSOFT && qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF"))
     {
-      ALCint attribs[] = { ALC_HRTF_SOFT, s_alHRTF->integer ? ALC_TRUE : ALC_FALSE, 0 };
+      ALCint hrtfVal = ALC_FALSE;
+      if (s_alHRTF->integer == 1) {
+        hrtfVal = ALC_TRUE;
+      } else if (s_alHRTF->integer == 2) {
+        hrtfVal = ALC_HRTF_REQUIRED_SOFT;
+      }
+      ALCint attribs[] = { ALC_HRTF_SOFT, hrtfVal, 0 };
       if (qalcResetDeviceSOFT(alDevice, attribs))
       {
         ALCint hrtfState = 0;
@@ -3276,8 +3282,14 @@ void S_AL_Update( void )
   {
     if (qalcResetDeviceSOFT && qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF"))
     {
+      ALCint hrtfVal = ALC_FALSE;
+      if (s_alHRTF->integer == 1) {
+        hrtfVal = ALC_TRUE;
+      } else if (s_alHRTF->integer == 2) {
+        hrtfVal = ALC_HRTF_REQUIRED_SOFT;
+      }
       ALCint attribs[] = {
-        ALC_HRTF_SOFT, s_alHRTF->integer ? ALC_TRUE : ALC_FALSE,
+        ALC_HRTF_SOFT, hrtfVal,
         ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer,
         0
       };
@@ -3502,6 +3514,9 @@ void S_AL_Shutdown( void )
 #endif
 #ifndef ALC_HRTF_ID_SOFT
 #define ALC_HRTF_ID_SOFT 0x1996
+#endif
+#ifndef ALC_HRTF_REQUIRED_SOFT
+#define ALC_HRTF_REQUIRED_SOFT 0x0003
 #endif
 
 /*
@@ -3733,7 +3748,8 @@ qboolean S_AL_Init( soundInterface_t *si )
       // Create OpenAL context
       if ( qalcIsExtensionPresent( alDevice, "ALC_EXT_EFX" ) ) {
         if ( s_alHRTF->integer && qalcIsExtensionPresent( alDevice, "ALC_SOFT_HRTF" ) ) {
-          ALCint attribs[7] = { ALC_MAX_AUXILIARY_SENDS, 2, ALC_HRTF_SOFT, ALC_TRUE, ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer, 0 };
+          ALCint hrtfVal = (s_alHRTF->integer == 2) ? ALC_HRTF_REQUIRED_SOFT : ALC_TRUE;
+          ALCint attribs[7] = { ALC_MAX_AUXILIARY_SENDS, 2, ALC_HRTF_SOFT, hrtfVal, ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer, 0 };
           alContext = qalcCreateContext( alDevice, attribs );
         } else {
           ALCint attribs[3] = { ALC_MAX_AUXILIARY_SENDS, 2, 0 };
@@ -3741,7 +3757,8 @@ qboolean S_AL_Init( soundInterface_t *si )
         }
       } else {
         if ( s_alHRTF->integer && qalcIsExtensionPresent( alDevice, "ALC_SOFT_HRTF" ) ) {
-          ALCint attribs[5] = { ALC_HRTF_SOFT, ALC_TRUE, ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer, 0 };
+          ALCint hrtfVal = (s_alHRTF->integer == 2) ? ALC_HRTF_REQUIRED_SOFT : ALC_TRUE;
+          ALCint attribs[5] = { ALC_HRTF_SOFT, hrtfVal, ALC_HRTF_ID_SOFT, s_alHRTFProfile->integer, 0 };
           alContext = qalcCreateContext( alDevice, attribs );
         } else {
           alContext = qalcCreateContext( alDevice, NULL );
@@ -3774,7 +3791,9 @@ qboolean S_AL_Init( soundInterface_t *si )
         s_alAvailableHRTFs = Cvar_Get("s_alAvailableHRTFs", hrtfNames, CVAR_ROM | CVAR_NORESTART);
 
         // Also set active profile name CVar
-        if (s_alHRTF->integer)
+        ALCint hrtfState = 0;
+        qalcGetIntegerv(alDevice, ALC_HRTF_SOFT, 1, &hrtfState);
+        if (hrtfState && s_alHRTF->integer)
         {
           const ALCchar *activeHrtf = qalcGetStringiSOFT(alDevice, ALC_HRTF_SPECIFIER_SOFT, s_alHRTFProfile->integer);
           Cvar_Set("s_alHRTFProfileName", activeHrtf ? activeHrtf : "Default");

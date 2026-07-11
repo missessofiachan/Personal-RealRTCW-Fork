@@ -143,6 +143,19 @@ if ! run_build_cmd make STEAM=1 COPYDIR="$TARGET_DIR" copyfiles; then
     exit 1
 fi
 
+# Package and deploy UI changes to z_zz_sofia.pk3
+if [ -d "$SCRIPT_DIR/ui" ]; then
+    echo -e "${GREEN}Packaging UI menus into z_zz_sofia.pk3...${NC}"
+    if command -v zip &> /dev/null; then
+        # Create or update z_zz_sofia.pk3 in the target Steam main folder
+        mkdir -p "$TARGET_DIR/main"
+        (cd "$SCRIPT_DIR" && zip -r -0 -q "$TARGET_DIR/main/z_zz_sofia.pk3" ui)
+    else
+        echo -e "${YELLOW}Warning: 'zip' utility not found. Could not package UI into z_zz_sofia.pk3.${NC}"
+    fi
+fi
+
+
 # Also double check and copy launcher helper script if desired
 LAUNCHER_SRC="/home/sofia/Desktop/RealRTCW-native-launcher.sh"
 LAUNCHER_DEST="$TARGET_DIR/RealRTCW-native-launcher.sh"

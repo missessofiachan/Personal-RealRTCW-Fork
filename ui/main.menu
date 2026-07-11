@@ -3617,9 +3617,10 @@ itemDef {
 		name sofiasettings
 		textfont UI_FONT_BIG
 		group system
-		type ITEM_TYPE_YESNO
+		type ITEM_TYPE_MULTI
 		text "HRTF (Headphones)"
 		cvar "s_alHRTF"
+		cvarFloatList { "Disabled" 0 "Enabled" 1 "Forced" 2 }
 		rect 300 305 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
@@ -3629,10 +3630,11 @@ itemDef {
 		backcolor 1 1 1 .07       
 		forecolor 1 1 1 1
 		visible 0 
-		mouseenter { setCvar "ui_sofia_desc" "Toggle Head-Related Transfer Function (HRTF) 3D audio." }
+		mouseenter { setCvar "ui_sofia_desc" "Toggle/Force Head-Related Transfer Function (HRTF) 3D audio." }
 		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
 
+	/*
 	itemDef {
 		name sofiasettings
 		textfont UI_FONT_BIG
@@ -3670,6 +3672,7 @@ itemDef {
 		mouseenter { setCvar "ui_sofia_desc" "Cycle available HRTF profiles for optimal 3D positioning." }
 		mouseexit { setCvar "ui_sofia_desc" "" }
 	}
+	*/
 
 	itemDef {
 		name sofiasettings
@@ -3677,7 +3680,7 @@ itemDef {
 		group system
 		type ITEM_TYPE_TEXT
 		text "Audio Device"
-		rect 300 335 290 12
+		rect 300 320 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3695,7 +3698,7 @@ itemDef {
 		group system
 		type ITEM_TYPE_BUTTON
 		cvar "s_alDevice"
-		rect 300 335 290 12
+		rect 300 320 290 12
 		textalign ITEM_ALIGN_LEFT
 		textalignx 150
 		textaligny 10
@@ -3716,7 +3719,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Environmental Reverb"
 		cvar "s_alReverb"
-		rect 300 350 290 12
+		rect 300 335 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3736,7 +3739,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Audio Occlusion"
 		cvar "s_alOcclusion"
-		rect 300 365 290 12
+		rect 300 350 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3756,7 +3759,7 @@ itemDef {
 		type ITEM_TYPE_SLIDER
 		text "Reverb Intensity"
 		cvarfloat "s_alReverbGain" 1.0 0 2.0
-		rect 300 380 290 12
+		rect 300 365 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 142
 		textaligny 10
@@ -3774,7 +3777,7 @@ itemDef {
 		textfont UI_FONT_BIG
 		group system
 		cvar "ui_sofia_desc"
-		rect 300 398 290 12
+		rect 300 383 290 12
 		textalign ITEM_ALIGN_CENTER
 		textalignx 145
 		textaligny 10
