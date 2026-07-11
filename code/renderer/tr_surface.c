@@ -609,8 +609,8 @@ static void DoRailDiscs( int numSegs, const vec3_t start, const vec3_t dir, cons
 	vec3_t pos[4];
 	vec3_t v;
 	int spanWidth = r_railWidth->integer;
-	float c, s;
-	float scale;
+	float scale = 0.25f;
+	unsigned int packedColor;
 
 	if ( numSegs > 1 ) {
 		numSegs--;
@@ -619,48 +619,52 @@ static void DoRailDiscs( int numSegs, const vec3_t start, const vec3_t dir, cons
 		return;
 	}
 
-	scale = 0.25;
+	// Hoist and pre-calculate structural angles using single-precision trigonometry
+	float factor = scale * spanWidth;
+	for ( i = 0; i < 4; i++ ) {
+		float ang = (45.0f + i * 90.0f) * (M_PI / 180.0f);
+		float c = cosf(ang);
+		float s = sinf(ang);
 
-	for ( i = 0; i < 4; i++ )
-	{
-		c = cos( DEG2RAD( 45 + i * 90 ) );
-		s = sin( DEG2RAD( 45 + i * 90 ) );
-		v[0] = ( right[0] * c + up[0] * s ) * scale * spanWidth;
-		v[1] = ( right[1] * c + up[1] * s ) * scale * spanWidth;
-		v[2] = ( right[2] * c + up[2] * s ) * scale * spanWidth;
+		v[0] = ( right[0] * c + up[0] * s ) * factor;
+		v[1] = ( right[1] * c + up[1] * s ) * factor;
+		v[2] = ( right[2] * c + up[2] * s ) * factor;
 		VectorAdd( start, v, pos[i] );
 
 		if ( numSegs > 1 ) {
-			// offset by 1 segment if we're doing a long distance shot
 			VectorAdd( pos[i], dir, pos[i] );
 		}
 	}
 
-	for ( i = 0; i < numSegs; i++ )
-	{
-		int j;
+	packedColor = *(unsigned int *)backEnd.currentEntity->e.shaderRGBA;
 
+	// Stream aligned blocks into vertex array targets
+	for ( i = 0; i < numSegs; i++ ) {
+		int j;
 		RB_CHECKOVERFLOW( 4, 6 );
 
-		for ( j = 0; j < 4; j++ )
-		{
-			VectorCopy( pos[j], tess.xyz[tess.numVertexes] );
-			tess.texCoords[tess.numVertexes][0][0] = ( j < 2 );
-			tess.texCoords[tess.numVertexes][0][1] = ( j && j != 3 );
-			tess.vertexColors[tess.numVertexes][0] = backEnd.currentEntity->e.shaderRGBA[0];
-			tess.vertexColors[tess.numVertexes][1] = backEnd.currentEntity->e.shaderRGBA[1];
-			tess.vertexColors[tess.numVertexes][2] = backEnd.currentEntity->e.shaderRGBA[2];
-			tess.numVertexes++;
+		int vbase = tess.numVertexes;
+
+		for ( j = 0; j < 4; j++ ) {
+			int nv = vbase + j;
+			VectorCopy( pos[j], tess.xyz[nv] );
+			tess.texCoords[nv][0][0] = tess.texCoords[nv][1][0] = (float)( j < 2 );
+			tess.texCoords[nv][0][1] = tess.texCoords[nv][1][1] = (float)( j && j != 3 );
+			*(unsigned int *)&tess.vertexColors[nv] = packedColor;
 
 			VectorAdd( pos[j], dir, pos[j] );
 		}
 
-		tess.indexes[tess.numIndexes++] = tess.numVertexes - 4 + 0;
-		tess.indexes[tess.numIndexes++] = tess.numVertexes - 4 + 1;
-		tess.indexes[tess.numIndexes++] = tess.numVertexes - 4 + 3;
-		tess.indexes[tess.numIndexes++] = tess.numVertexes - 4 + 3;
-		tess.indexes[tess.numIndexes++] = tess.numVertexes - 4 + 1;
-		tess.indexes[tess.numIndexes++] = tess.numVertexes - 4 + 2;
+		int idxBase = tess.numIndexes;
+		tess.indexes[idxBase + 0] = vbase;
+		tess.indexes[idxBase + 1] = vbase + 1;
+		tess.indexes[idxBase + 2] = vbase + 3;
+		tess.indexes[idxBase + 3] = vbase + 3;
+		tess.indexes[idxBase + 4] = vbase + 1;
+		tess.indexes[idxBase + 5] = vbase + 2;
+
+		tess.numIndexes  += 6;
+		tess.numVertexes += 4;
 	}
 }
 
