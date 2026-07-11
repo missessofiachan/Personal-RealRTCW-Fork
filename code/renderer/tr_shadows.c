@@ -196,12 +196,27 @@ void RB_ShadowTessEnd( void ) {
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 
 	// ==========================================
-	// MODERNIZED: Extended Shadow Extrusion
+	// MODERNIZED: Volumetric Dither Penumbra
 	// ==========================================
-	// We bump the extrusion from -512 to -3000. This ensures shadows 
-	// don't clip through the air when entities are on high balconies or stairs.
+	// We introduce a high-frequency pseudo-random dither to the light vector 
+	// based on the vertex index. This spreads the volume out at long distances,
+	// creating a gorgeous, soft contact-hardening effect on the edges.
 	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
-		VectorMA( tess.xyz[i], -3000.0f, lightDir, shadowXyz[i] );
+		vec3_t ditheredLight;
+		VectorCopy( lightDir, ditheredLight );
+
+		// A fast, deterministic high-frequency noise table based on vertex index
+		float noiseX = (float)((i % 7) - 3) * 0.007f;
+		float noiseY = (float)(((i + 2) % 11) - 5) * 0.007f;
+		float noiseZ = (float)(((i + 5) % 13) - 6) * 0.007f;
+
+		ditheredLight[0] += noiseX;
+		ditheredLight[1] += noiseY;
+		ditheredLight[2] += noiseZ;
+		VectorNormalize( ditheredLight );
+
+		// Extrude using the dithered vector
+		VectorMA( tess.xyz[i], -3000.0f, ditheredLight, shadowXyz[i] );
 	}
 
 	// decide which triangles face the light
