@@ -14,9 +14,9 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-MOD_NAME="flashlight_mod"
+MOD_NAME="sofia_mod"
 OUTPUT_DIR="build/$MOD_NAME"
-ZIP_NAME="z_flashlight.pk3"
+ZIP_NAME="z_zz_sofia.pk3"
 
 echo -e "${BLUE}=== RealRTCW Mod Packaging Script ===${NC}"
 
@@ -72,12 +72,6 @@ rm -rf description.txt ui
 cd "$SCRIPT_DIR"
 
 echo -e "${GREEN}Mod successfully packaged!${NC}"
-echo -e "Packaged folder location: ${YELLOW}$SCRIPT_DIR/$OUTPUT_DIR/${NC}"
-echo ""
-echo -e "To test locally, copy the entire ${YELLOW}$MOD_NAME/${NC} folder to your RealRTCW directory:"
-echo -e "  ${BLUE}cp -r $SCRIPT_DIR/$OUTPUT_DIR /run/media/system/NVME_GAME_1/SteamLibrary/steamapps/common/RealRTCW/${NC}"
-echo ""
-echo -e "Then run the game with the addon enabled:"
-echo -e "  ${BLUE}./RealRTCW-native-launcher.sh +set fs_game $MOD_NAME${NC}"
-echo ""
-echo -e "For Steam Workshop submission, use the Steam Workshop Uploader and point it to the packaged folder."
+echo -e "Copying $ZIP_NAME to vanilla main folder..."
+cp -v "$OUTPUT_DIR/$ZIP_NAME" "/run/media/system/NVME_GAME_1/SteamLibrary/steamapps/common/RealRTCW/main/"
+echo -e "${GREEN}Successfully deployed $ZIP_NAME to vanilla main!${NC}"

@@ -849,6 +849,13 @@ Bullet_Fire_Extended
 ==============
 */
 qboolean Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start, vec3_t end, float spread, int damage, int recursion ) {
+	if ( g_bulletProjectiles.integer && recursion == 0 ) {
+		vec3_t dir;
+		VectorSubtract( end, start, dir );
+		VectorNormalize( dir );
+		fire_bullet( attacker, start, dir, attacker->s.weapon, damage );
+		return qfalse;
+	}
     trace_t tr;
     gentity_t   *tent;
     gentity_t   *traceEnt;

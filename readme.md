@@ -170,6 +170,10 @@ This repository is a modernized, high-performance fork of the Return to Castle W
   * *Benefit*: Displays rich activity status to friends without introducing gameplay micro-stutters.
 * **Tactical Flashlight**: Added a battery-powered flashlight with dynamic dimming curves, HUD indicators, and AI detection paths.
   * *Benefit*: Enhances tactical options with realistic battery consumption and AI stealth responses.
+* **WWII Realistic Bullet Projectile Physics & Ballistics**: Adds an option to toggle physical bullet projectiles instead of hitscan traces, with flight speeds based on real-world muzzle velocities of WW2 weapons (e.g. Luger, Colt, MP40, Mauser, Venom minigun) and optional gravity-drop trajectory simulations.
+  * *Benefit 1*: Elevates combat realism and tactical gunplay by introducing bullet travel time and drop over long distances.
+  - *Benefit 2*: Retains full compatibility with existing systems like headshot zones, damage falloff, ricochets, and material penetration.
+  - *Benefit 3*: Integrates seamlessly as a toggle directly in the vanilla Gameplay Options UI.
 * **High-DPI Console Scaling**: Scales the console layout dynamically.
   * *Benefit*: Ensures the console is fully legible on modern high-resolution 1440p and 4K displays.
 * **Bazzite & Distrobox Dev Support**: Configured build scripts for compiling within `Bazzite-dev-nvidia` Distrobox containers.

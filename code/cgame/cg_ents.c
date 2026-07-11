@@ -1198,6 +1198,47 @@ CG_Missile
 ===============
 */
 
+static qboolean CG_IsBulletWeapon( int weapon ) {
+	switch ( weapon ) {
+		case WP_LUGER:
+		case WP_SILENCER:
+		case WP_COLT:
+		case WP_AKIMBO:
+		case WP_TT33:
+		case WP_DUAL_TT33:
+		case WP_REVOLVER:
+		case WP_HDM:
+		case WP_MP40:
+		case WP_THOMPSON:
+		case WP_STEN:
+		case WP_PPSH:
+		case WP_MP34:
+		case WP_MAUSER:
+		case WP_SNIPERRIFLE:
+		case WP_DELISLE:
+		case WP_DELISLESCOPE:
+		case WP_M1GARAND:
+		case WP_GARAND:
+		case WP_G43:
+		case WP_M1941:
+		case WP_M1941SCOPE:
+		case WP_MP44:
+		case WP_FG42:
+		case WP_FG42SCOPE:
+		case WP_BAR:
+		case WP_M97:
+		case WP_AUTO5:
+		case WP_M30:
+		case WP_BROWNING:
+		case WP_MG42M:
+		case WP_SNOOPERSCOPE:
+		case WP_VENOM:
+			return qtrue;
+		default:
+			return qfalse;
+	}
+}
+
 extern void CG_RocketTrail( centity_t *ent, const weaponInfo_t *wi );
 
 static void CG_Missile( centity_t *cent ) {
@@ -1226,6 +1267,13 @@ static void CG_Missile( centity_t *cent ) {
 		 || cent->currentState.eType == ET_FIRE_COLUMN_SMOKE
 		 || cent->currentState.eType == ET_RAMJET ) {
 		CG_RocketTrail( cent, NULL );
+	} else if ( CG_IsBulletWeapon( s1->weapon ) ) {
+		vec3_t start, end, velocity;
+		BG_EvaluateTrajectoryDelta( &cent->currentState.pos, cg.time, velocity, qfalse, -1 );
+		VectorCopy( cent->lerpOrigin, end );
+		VectorNormalize2( velocity, start );
+		VectorMA( end, -80.0f, start, start );
+		CG_DrawTracer( start, end );
 	} else if ( weapon->missileTrailFunc ) {
 		weapon->missileTrailFunc( cent, weapon );
 	}

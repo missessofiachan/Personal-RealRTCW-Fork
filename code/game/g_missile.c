@@ -653,6 +653,12 @@ void G_RunMissile( gentity_t *ent ) {
 			return;
 		}
 
+		if ( ent->classname && Q_stricmp( ent->classname, "bullet" ) == 0 ) {
+			Bullet_Fire_Extended( ent, &g_entities[ent->r.ownerNum], ent->r.currentOrigin, origin, 0, ent->damage, 1 );
+			G_FreeEntity( ent );
+			return;
+		}
+
 		if ( ent->s.weapon == WP_PANZERFAUST ) {
 			impactDamage = 999; // goes through pretty much any func_explosives
 		} else {
@@ -1488,6 +1494,121 @@ gentity_t *fire_mortar( gentity_t *self, vec3_t start, vec3_t dir ) {
 //	VectorScale( dir, 900, bolt->s.pos.trDelta );
 	VectorCopy( dir, bolt->s.pos.trDelta );
 	SnapVector( bolt->s.pos.trDelta );          // save net bandwidth
+	VectorCopy( start, bolt->r.currentOrigin );
+
+	return bolt;
+}
+
+gentity_t *fire_bullet( gentity_t *self, vec3_t start, vec3_t dir, int weapon, int damage ) {
+	gentity_t   *bolt;
+	int speed = 15000;
+
+	VectorNormalize( dir );
+
+	bolt = G_Spawn();
+	bolt->classname = "bullet";
+	bolt->nextthink = level.time + 3000;
+	bolt->think = G_FreeEntity;
+	bolt->s.eType = ET_MISSILE;
+	bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN | SVF_BROADCAST;
+
+	bolt->s.weapon = weapon;
+	bolt->r.ownerNum = self->s.number;
+	bolt->parent = self;
+	bolt->damage = damage;
+	bolt->methodOfDeath = ammoTable[weapon].mod;
+	bolt->clipmask = MASK_MISSILESHOT;
+
+	switch ( weapon ) {
+		case WP_LUGER:
+		case WP_SILENCER:
+			speed = 13780;
+			break;
+		case WP_COLT:
+		case WP_AKIMBO:
+			speed = 9840;
+			break;
+		case WP_TT33:
+		case WP_DUAL_TT33:
+			speed = 16535;
+			break;
+		case WP_REVOLVER:
+			speed = 8660;
+			break;
+		case WP_HDM:
+			speed = 10230;
+			break;
+		case WP_MP40:
+			speed = 15750;
+			break;
+		case WP_THOMPSON:
+			speed = 11220;
+			break;
+		case WP_STEN:
+			speed = 11810;
+			break;
+		case WP_PPSH:
+			speed = 19200;
+			break;
+		case WP_MP34:
+			speed = 16140;
+			break;
+		case WP_MAUSER:
+		case WP_SNIPERRIFLE:
+			speed = 29920;
+			break;
+		case WP_DELISLE:
+		case WP_DELISLESCOPE:
+			speed = 9960;
+			break;
+		case WP_M1GARAND:
+		case WP_GARAND:
+			speed = 33580;
+			break;
+		case WP_G43:
+			speed = 30510;
+			break;
+		case WP_M1941:
+		case WP_M1941SCOPE:
+			speed = 33580;
+			break;
+		case WP_MP44:
+			speed = 26970;
+			break;
+		case WP_FG42:
+		case WP_FG42SCOPE:
+			speed = 29130;
+			break;
+		case WP_BAR:
+			speed = 33850;
+			break;
+		case WP_M97:
+		case WP_AUTO5:
+		case WP_M30:
+			speed = 14960;
+			break;
+		case WP_BROWNING:
+			speed = 33580;
+			break;
+		case WP_MG42M:
+			speed = 29720;
+			break;
+		case WP_SNOOPERSCOPE:
+			speed = 12200;
+			break;
+		case WP_VENOM:
+			speed = 33460;
+			break;
+		default:
+			speed = 15000;
+			break;
+	}
+
+	bolt->s.pos.trType = g_bulletGravity.integer ? TR_GRAVITY_LOW : TR_LINEAR;
+	bolt->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;
+	VectorCopy( start, bolt->s.pos.trBase );
+	VectorScale( dir, speed, bolt->s.pos.trDelta );
+	SnapVector( bolt->s.pos.trDelta );
 	VectorCopy( start, bolt->r.currentOrigin );
 
 	return bolt;

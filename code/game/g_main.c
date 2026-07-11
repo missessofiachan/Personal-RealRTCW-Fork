@@ -182,6 +182,8 @@ vmCvar_t g_survivalDifficulty;
 vmCvar_t g_survivalBosses;
 
 vmCvar_t g_playerSurvivalClass;    
+vmCvar_t g_bulletProjectiles;
+vmCvar_t g_bulletGravity;
 
 vmCvar_t g_ee_skinEliteGuard;
 vmCvar_t g_ee_skinMercenary;
@@ -348,6 +350,8 @@ cvarTable_t gameCvarTable[] = {
 	{&g_bodysink, "g_bodysink", "0", CVAR_ARCHIVE},
 	{&g_weaponfalloff, "g_weaponfalloff", "0", CVAR_ARCHIVE},
 	{&g_flushItems, "g_flushItems", "1", 0},
+	{&g_bulletProjectiles, "g_bulletProjectiles", "0", CVAR_ARCHIVE},
+	{&g_bulletGravity, "g_bulletGravity", "0", CVAR_ARCHIVE},
 	{&g_mapname, "mapname", "", CVAR_ARCHIVE}};
 
 static int gameCvarTableSize = ARRAY_LEN( gameCvarTable );

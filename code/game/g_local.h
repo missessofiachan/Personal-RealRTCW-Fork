@@ -930,6 +930,8 @@ void G_RunDebris( gentity_t *ent );
 
 gentity_t *fire_grenade( gentity_t *self, vec3_t start, vec3_t aimdir, int grenadeWPID );
 gentity_t *fire_rocket( gentity_t *self, vec3_t start, vec3_t dir );
+gentity_t *fire_bullet( gentity_t *self, vec3_t start, vec3_t dir, int weapon, int damage );
+qboolean Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start, vec3_t end, float spread, int damage, int recursion );
 
 
 // Rafael sniper
@@ -1284,6 +1286,8 @@ extern vmCvar_t	g_flushItems;
 extern vmCvar_t g_vanilla_guns;
 extern vmCvar_t g_specialWaves;
 extern vmCvar_t g_survivalAiHealthCap;
+extern vmCvar_t g_bulletProjectiles;
+extern vmCvar_t g_bulletGravity;
 
 void	trap_Print( const char *text );
 void	trap_Error( const char *text ) __attribute__((noreturn));
