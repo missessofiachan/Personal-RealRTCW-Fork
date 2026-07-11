@@ -52,10 +52,10 @@ use the shader system.
 RB_CheckOverflow
 ==============
 */
-extern inline void RB_CheckOverflow( int verts, int indexes ) {
-	// Use branch prediction optimization: buffer space availability is the highly likely path
-	if ( __builtin_expect( (tess.numVertexes + verts < SHADER_MAX_VERTEXES) && 
-	                       (tess.numIndexes + indexes < SHADER_MAX_INDEXES), 1 ) ) {
+void RB_CheckOverflow( int verts, int indexes ) {
+	// Performance hint: buffer space availability is the highly expected outcome
+	if ( __builtin_expect( ( tess.numVertexes + verts < SHADER_MAX_VERTEXES ) &&
+	                       ( tess.numIndexes + indexes < SHADER_MAX_INDEXES ), 1 ) ) {
 		return;
 	}
 
@@ -84,15 +84,15 @@ void RB_AddQuadStampExt( vec3_t origin, vec3_t left, vec3_t up, byte *color, flo
 
 	ndx = tess.numVertexes;
 
-	// triangle indexes for a simple quad
-	tess.indexes[ tess.numIndexes ] = ndx;
+	// Triangle indexing mapping layout for the quad face
+	tess.indexes[ tess.numIndexes ]     = ndx;
 	tess.indexes[ tess.numIndexes + 1 ] = ndx + 1;
 	tess.indexes[ tess.numIndexes + 2 ] = ndx + 3;
-
 	tess.indexes[ tess.numIndexes + 3 ] = ndx + 3;
 	tess.indexes[ tess.numIndexes + 4 ] = ndx + 1;
 	tess.indexes[ tess.numIndexes + 5 ] = ndx + 2;
 
+	// Geometric coordinate mapping vectors
 	tess.xyz[ndx][0] = origin[0] + left[0] + up[0];
 	tess.xyz[ndx][1] = origin[1] + left[1] + up[1];
 	tess.xyz[ndx][2] = origin[2] + left[2] + up[2];
@@ -109,15 +109,13 @@ void RB_AddQuadStampExt( vec3_t origin, vec3_t left, vec3_t up, byte *color, flo
 	tess.xyz[ndx + 3][1] = origin[1] + left[1] - up[1];
 	tess.xyz[ndx + 3][2] = origin[2] + left[2] - up[2];
 
-
-	// constant normal all the way around
+	// Compute uniform normal facing relative to the player viewpoint axis
 	VectorSubtract( vec3_origin, backEnd.viewParms.or.axis[0], normal );
-
 	tess.normal[ndx][0] = tess.normal[ndx + 1][0] = tess.normal[ndx + 2][0] = tess.normal[ndx + 3][0] = normal[0];
 	tess.normal[ndx][1] = tess.normal[ndx + 1][1] = tess.normal[ndx + 2][1] = tess.normal[ndx + 3][1] = normal[1];
 	tess.normal[ndx][2] = tess.normal[ndx + 1][2] = tess.normal[ndx + 2][2] = tess.normal[ndx + 3][2] = normal[2];
 
-	// standard square texture coordinates
+	// Map texture lookups natively into dual coordinates channels
 	tess.texCoords[ndx][0][0] = tess.texCoords[ndx][1][0] = s1;
 	tess.texCoords[ndx][0][1] = tess.texCoords[ndx][1][1] = t1;
 
@@ -130,17 +128,16 @@ void RB_AddQuadStampExt( vec3_t origin, vec3_t left, vec3_t up, byte *color, flo
 	tess.texCoords[ndx + 3][0][0] = tess.texCoords[ndx + 3][1][0] = s1;
 	tess.texCoords[ndx + 3][0][1] = tess.texCoords[ndx + 3][1][1] = t2;
 
-	// constant color all the way around
-	// should this be identity and let the shader specify from entity?
-	*( unsigned int * ) &tess.vertexColors[ndx] =
-		*( unsigned int * ) &tess.vertexColors[ndx + 1] =
-			*( unsigned int * ) &tess.vertexColors[ndx + 2] =
-				*( unsigned int * ) &tess.vertexColors[ndx + 3] =
-					*( unsigned int * )color;
-
+	// Vectorized 32-bit Integer color assignment block
+	unsigned int *colorPtr = (unsigned int *)&tess.vertexColors[ndx];
+	unsigned int packedColor = *(unsigned int *)color;
+	colorPtr[0] = packedColor;
+	colorPtr[1] = packedColor;
+	colorPtr[2] = packedColor;
+	colorPtr[3] = packedColor;
 
 	tess.numVertexes += 4;
-	tess.numIndexes += 6;
+	tess.numIndexes  += 6;
 }
 
 /*
