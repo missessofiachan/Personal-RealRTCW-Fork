@@ -178,33 +178,37 @@ RB_SurfaceSprite
 static void RB_SurfaceSprite( void ) {
 	vec3_t left, up;
 	float radius;
+	refEntity_t *currEnt = &backEnd.currentEntity->e;
 
-	// calculate the xyz locations for the four corners
-	radius = backEnd.currentEntity->e.radius;
-	if ( backEnd.currentEntity->e.rotation == 0 ) {
+	radius = currEnt->radius;
+	if ( currEnt->rotation == 0.0f ) {
 		VectorScale( backEnd.viewParms.or.axis[1], radius, left );
 		VectorScale( backEnd.viewParms.or.axis[2], radius, up );
 	} else {
 		float s, c;
-		float ang;
+		float ang = currEnt->rotation * (M_PI / 180.0f);
 
-		ang = M_PI * backEnd.currentEntity->e.rotation / 180;
-		s = sin( ang );
-		c = cos( ang );
+		s = sinf( ang );
+		c = cosf( ang );
 
-		VectorScale( backEnd.viewParms.or.axis[1], c * radius, left );
-		VectorMA( left, -s * radius, backEnd.viewParms.or.axis[2], left );
+		float cRadius = c * radius;
+		float sRadius = s * radius;
 
-		VectorScale( backEnd.viewParms.or.axis[2], c * radius, up );
-		VectorMA( up, s * radius, backEnd.viewParms.or.axis[1], up );
+		left[0] = (backEnd.viewParms.or.axis[1][0] * cRadius) - (backEnd.viewParms.or.axis[2][0] * sRadius);
+		left[1] = (backEnd.viewParms.or.axis[1][1] * cRadius) - (backEnd.viewParms.or.axis[2][1] * sRadius);
+		left[2] = (backEnd.viewParms.or.axis[1][2] * cRadius) - (backEnd.viewParms.or.axis[2][2] * sRadius);
+
+		up[0]   = (backEnd.viewParms.or.axis[2][0] * cRadius) + (backEnd.viewParms.or.axis[1][0] * sRadius);
+		up[1]   = (backEnd.viewParms.or.axis[2][1] * cRadius) + (backEnd.viewParms.or.axis[1][1] * sRadius);
+		up[2]   = (backEnd.viewParms.or.axis[2][2] * cRadius) + (backEnd.viewParms.or.axis[1][2] * sRadius);
 	}
+	
 	if ( backEnd.viewParms.isMirror ) {
 		VectorSubtract( vec3_origin, left, left );
 	}
 
-	RB_AddQuadStamp( backEnd.currentEntity->e.origin, left, up, backEnd.currentEntity->e.shaderRGBA );
+	RB_AddQuadStamp( currEnt->origin, left, up, currEnt->shaderRGBA );
 }
-
 
 /*
 =============
