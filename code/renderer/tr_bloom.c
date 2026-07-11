@@ -337,15 +337,21 @@ static void R_Bloom_WarsowEffect( void )
 			intensity =  *diamond * scale;
 			if( intensity < 0.01f )
 				continue;
-			qglColor4f( intensity, intensity, intensity, 1.0 );
-			x = (i - k) * ( 2 / 640.0f ) * bloom.effect.readW;
-			y = (j - k) * ( 2 / 480.0f ) * bloom.effect.readH;
+				
+			qglColor4f( intensity, intensity, intensity, 1.0f );
+			
+			// Dynamic step generation based on active screen asset metrics
+			float stepX = 2.5f / (float)bloom.work.width;
+			float stepY = 2.5f / (float)bloom.work.height;
+			
+			x = (float)(i - k) * stepX * bloom.effect.readW;
+			y = (float)(j - k) * stepY * bloom.effect.readH;
 
 			R_Bloom_Quad( bloom.work.width, bloom.work.height, x, y, bloom.effect.readW, bloom.effect.readH );
 		}
 	}
 	qglCopyTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, 0, 0, bloom.work.width, bloom.work.height );
-}											
+}			
 
 /*
 =================
