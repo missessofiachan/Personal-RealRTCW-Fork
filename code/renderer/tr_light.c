@@ -95,36 +95,50 @@ void R_DlightBmodel( bmodel_t *bmodel ) {
 		mask |= 1 << i;
 	}
 
-	// RF, this is why some dlights wouldn't light up bmodels
-
-	//tr.currentEntity->needDlights = (mask != 0);
-
-	// (SA) isn't this dangerous to do to an enumerated type? (setting it to an int)
-	//		meaning, shouldn't ->needDlights be changed to an int rather than a qbool?
-
 	tr.currentEntity->needDlights = mask;
-
 
 	// set the dlight bits in all the surfaces
 	for (i = 0 ; i < bmodel->numSurfaces ; i++)
 	{
+		// Start with the bmodel's global light mask
+		int surfMask = mask;
 		surf = bmodel->firstSurface + i;
 
-		if (*surf->data == SF_FACE)
-		{
-			((srfSurfaceFace_t *)surf->data)->dlightBits = mask;
+		// ==========================================
+		// MODERNIZED: Surface-Aware Light Culling
+		// ==========================================
+		// If the surface is a standard geometric face, we perform a rapid dot-product 
+		// check against the plane. If the light source is mathematically entirely behind 
+		// the face, we strip the light bit. This saves immense GPU vertex processing.
+		if ( surfMask && *surf->data == SF_FACE ) {
+			srfSurfaceFace_t *face = (srfSurfaceFace_t *)surf->data;
+			
+			for ( j = 0 ; j < tr.refdef.num_dlights ; j++ ) {
+				if ( surfMask & ( 1 << j ) ) {
+					dl = &tr.refdef.dlights[j];
+					
+					// Calculate light distance from the geometric plane
+					float dist = DotProduct( dl->transformed, face->plane.normal ) - face->plane.dist;
+					
+					// If the light is deeper behind the plane than its own radius, it cannot touch this face
+					if ( dist < -dl->radius ) {
+						surfMask &= ~( 1 << j ); // Strip the specific light flag via bitwise negation
+					}
+				}
+			}
+			face->dlightBits = surfMask;
 		}
 		else if (*surf->data == SF_GRID)
 		{
-			((srfGridMesh_t *)surf->data)->dlightBits = mask;
+			((srfGridMesh_t *)surf->data)->dlightBits = surfMask;
 		}
 		else if (*surf->data == SF_TRIANGLES)
 		{
-			((srfTriangles2_t *)surf->data)->dlightBits = mask;
+			((srfTriangles2_t *)surf->data)->dlightBits = surfMask;
 		}
 		else if (*surf->data == SF_FOLIAGE)
 		{
-			((srfFoliage_t *)surf->data)->dlightBits = mask;
+			((srfFoliage_t *)surf->data)->dlightBits = surfMask;
 		}
 	}
 }
