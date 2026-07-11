@@ -941,130 +941,115 @@ void R_LatLongToNormal( vec3_t outNormal, short latLong ) {
 static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 	short   *oldXyz, *newXyz, *oldNormals, *newNormals;
 	float   *outXyz, *outNormal;
-	float oldXyzScale, newXyzScale;
-	float oldNormalScale, newNormalScale;
-	int vertNum;
+	float   oldXyzScale, newXyzScale;
+	float   oldNormalScale, newNormalScale;
+	int     vertNum;
 	unsigned lat, lng;
-	int numVerts;
+	int     numVerts = surf->numVerts;
 
-	int oldBase, newBase;
-	short   *oldComp = NULL, *newComp = NULL; // TTimo: init
-	mdcXyzCompressed_t *oldXyzComp = NULL, *newXyzComp = NULL; // TTimo: init
-	vec3_t oldOfsVec, newOfsVec;
-
+	int     oldBase, newBase;
+	short   *oldComp = NULL, *newComp = NULL;
+	mdcXyzCompressed_t *oldXyzComp = NULL, *newXyzComp = NULL;
+	vec3_t  oldOfsVec, newOfsVec;
 	qboolean hasComp;
 
 	outXyz = tess.xyz[tess.numVertexes];
 	outNormal = tess.normal[tess.numVertexes];
 
 	newBase = (int)*( ( short * )( (byte *)surf + surf->ofsFrameBaseFrames ) + backEnd.currentEntity->e.frame );
-	newXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals )
-			 + ( newBase * surf->numVerts * 4 );
+	newXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals ) + ( newBase * numVerts * 4 );
 	newNormals = newXyz + 3;
 
 	hasComp = ( surf->numCompFrames > 0 );
 	if ( hasComp ) {
 		newComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + backEnd.currentEntity->e.frame );
 		if ( *newComp >= 0 ) {
-			newXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed )
-						 + ( *newComp * surf->numVerts );
+			newXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed ) + ( *newComp * numVerts );
 		}
 	}
 
-	newXyzScale = MD3_XYZ_SCALE * ( 1.0 - backlerp );
-	newNormalScale = 1.0 - backlerp;
+	newXyzScale = MD3_XYZ_SCALE * ( 1.0f - backlerp );
+	newNormalScale = 1.0f - backlerp;
 
-	numVerts = surf->numVerts;
+	if ( backlerp == 0.0f ) {
+		// Hoisted compression check branch out of the execution loop path
+		if ( hasComp && *newComp >= 0 ) {
+			for ( vertNum = 0 ; vertNum < numVerts ; vertNum++, newXyz += 4, newNormals += 4, outXyz += 4, outNormal += 4 ) {
+				outXyz[0] = newXyz[0] * newXyzScale;
+				outXyz[1] = newXyz[1] * newXyzScale;
+				outXyz[2] = newXyz[2] * newXyzScale;
 
-	if ( backlerp == 0 ) {
-		//
-		// just copy the vertexes
-		//
-		for ( vertNum = 0 ; vertNum < numVerts ; vertNum++,
-			  newXyz += 4, newNormals += 4,
-			  outXyz += 4, outNormal += 4 )
-		{
-
-			outXyz[0] = newXyz[0] * newXyzScale;
-			outXyz[1] = newXyz[1] * newXyzScale;
-			outXyz[2] = newXyz[2] * newXyzScale;
-
-			// add the compressed ofsVec
-			if ( hasComp && *newComp >= 0 ) {
 				R_MDC_DecodeXyzCompressed( newXyzComp->ofsVec, newOfsVec, outNormal );
 				newXyzComp++;
 				VectorAdd( outXyz, newOfsVec, outXyz );
-			} else {
+			}
+		} else {
+			for ( vertNum = 0 ; vertNum < numVerts ; vertNum++, newXyz += 4, newNormals += 4, outXyz += 4, outNormal += 4 ) {
+				outXyz[0] = newXyz[0] * newXyzScale;
+				outXyz[1] = newXyz[1] * newXyzScale;
+				outXyz[2] = newXyz[2] * newXyzScale;
+
 				lat = ( newNormals[0] >> 8 ) & 0xff;
 				lng = ( newNormals[0] & 0xff );
-				lat *= 4;
-				lng *= 4;
+				lat <<= 2;
+				lng <<= 2;
 
-				outNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
+				outNormal[0] = tr.sinTable[( lat + 256 ) & FUNCTABLE_MASK];
 				outNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-				outNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+				outNormal[2] = tr.sinTable[( lng + 256 ) & FUNCTABLE_MASK];
 			}
 		}
 	} else {
-		//
-		// interpolate and copy the vertex and normal
-		//
 		oldBase = (int)*( ( short * )( (byte *)surf + surf->ofsFrameBaseFrames ) + backEnd.currentEntity->e.oldframe );
-		oldXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals )
-				 + ( oldBase * surf->numVerts * 4 );
+		oldXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals ) + ( oldBase * numVerts * 4 );
 		oldNormals = oldXyz + 3;
 
 		if ( hasComp ) {
 			oldComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + backEnd.currentEntity->e.oldframe );
 			if ( *oldComp >= 0 ) {
-				oldXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed )
-							 + ( *oldComp * surf->numVerts );
-			}
+				oldXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed ) + ( *oldComp * numVerts );
+            }
 		}
 
 		oldXyzScale = MD3_XYZ_SCALE * backlerp;
 		oldNormalScale = backlerp;
 
-		for ( vertNum = 0 ; vertNum < numVerts ; vertNum++,
-			  oldXyz += 4, newXyz += 4, oldNormals += 4, newNormals += 4,
-			  outXyz += 4, outNormal += 4 )
-		{
+		qboolean useNewComp = (hasComp && *newComp >= 0);
+		qboolean useOldComp = (hasComp && *oldComp >= 0);
+
+		for ( vertNum = 0 ; vertNum < numVerts ; vertNum++, oldXyz += 4, newXyz += 4, oldNormals += 4, newNormals += 4, outXyz += 4, outNormal += 4 ) {
 			vec3_t uncompressedOldNormal, uncompressedNewNormal;
 
-			// interpolate the xyz
 			outXyz[0] = oldXyz[0] * oldXyzScale + newXyz[0] * newXyzScale;
 			outXyz[1] = oldXyz[1] * oldXyzScale + newXyz[1] * newXyzScale;
 			outXyz[2] = oldXyz[2] * oldXyzScale + newXyz[2] * newXyzScale;
 
-			// add the compressed ofsVec
-			if ( hasComp && *newComp >= 0 ) {
+			if ( useNewComp ) {
 				R_MDC_DecodeXyzCompressed( newXyzComp->ofsVec, newOfsVec, uncompressedNewNormal );
 				newXyzComp++;
-				VectorMA( outXyz, 1.0 - backlerp, newOfsVec, outXyz );
+				VectorMA( outXyz, 1.0f - backlerp, newOfsVec, outXyz );
 			} else {
 				lat = ( newNormals[0] >> 8 ) & 0xff;
 				lng = ( newNormals[0] & 0xff );
-				lat *= 4;
-				lng *= 4;
-
-				uncompressedNewNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
+				lat <<= 2;
+				lng <<= 2;
+				uncompressedNewNormal[0] = tr.sinTable[( lat + 256 ) & FUNCTABLE_MASK];
 				uncompressedNewNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-				uncompressedNewNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+				uncompressedNewNormal[2] = tr.sinTable[( lng + 256 ) & FUNCTABLE_MASK];
 			}
 
-			if ( hasComp && *oldComp >= 0 ) {
+			if ( useOldComp ) {
 				R_MDC_DecodeXyzCompressed( oldXyzComp->ofsVec, oldOfsVec, uncompressedOldNormal );
 				oldXyzComp++;
 				VectorMA( outXyz, backlerp, oldOfsVec, outXyz );
 			} else {
 				lat = ( oldNormals[0] >> 8 ) & 0xff;
 				lng = ( oldNormals[0] & 0xff );
-				lat *= 4;
-				lng *= 4;
-
-				uncompressedOldNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
+				lat <<= 2;
+				lng <<= 2;
+				uncompressedOldNormal[0] = tr.sinTable[( lat + 256 ) & FUNCTABLE_MASK];
 				uncompressedOldNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-				uncompressedOldNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+				uncompressedOldNormal[2] = tr.sinTable[( lng + 256 ) & FUNCTABLE_MASK];
 			}
 
 			outNormal[0] = uncompressedOldNormal[0] * oldNormalScale + uncompressedNewNormal[0] * newNormalScale;
