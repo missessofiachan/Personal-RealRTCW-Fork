@@ -1227,11 +1227,8 @@ static void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 	dlightBits = cv->dlightBits;
 	tess.dlightBits |= dlightBits;
 
-	// determine the allowable discrepance
 	lodError = LodErrorForVolume( cv->lodOrigin, cv->lodRadius );
 
-	// determine which rows and columns of the subdivision
-	// we are actually going to use
 	widthTable[0] = 0;
 	lodWidth = 1;
 	for ( i = 1 ; i < cv->width - 1 ; i++ ) {
@@ -1254,19 +1251,17 @@ static void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 	heightTable[lodHeight] = cv->height - 1;
 	lodHeight++;
 
-
-	// very large grids may have more points or indexes than can be fit
-	// in the tess structure, so we may have to issue it in multiple passes
-
 	used = 0;
+	needsNormal = tess.shader->needsNormal;
+	int cvWidth = cv->width;
+	drawVert_t *cvVerts = cv->verts;
+
 	while ( used < lodHeight - 1 ) {
-		// see how many rows of both verts and indexes we can add without overflowing
 		do {
 			vrows = ( SHADER_MAX_VERTEXES - tess.numVertexes ) / lodWidth;
 			irows = ( SHADER_MAX_INDEXES - tess.numIndexes ) / ( lodWidth * 6 );
 
-			// if we don't have enough space for at least one strip, flush the buffer
-			if ( vrows < 2 || irows < 1 ) {
+			if ( __builtin_expect( vrows < 2 || irows < 1, 0 ) ) {
 				RB_EndSurface();
 				RB_BeginSurface( tess.shader, tess.fogNum );
 			} else {
@@ -1289,12 +1284,11 @@ static void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 		texCoords = tess.texCoords[numVertexes][0];
 		color = ( unsigned char * ) &tess.vertexColors[numVertexes];
 		vDlightBits = &tess.vertexDlightBits[numVertexes];
-		needsNormal = tess.shader->needsNormal;
 
 		for ( i = 0 ; i < rows ; i++ ) {
+			int hIndex = heightTable[ used + i ] * cvWidth;
 			for ( j = 0 ; j < lodWidth ; j++ ) {
-				dv = cv->verts + heightTable[ used + i ] * cv->width
-					 + widthTable[ j ];
+				dv = cvVerts + hIndex + widthTable[ j ];
 
 				xyz[0] = dv->xyz[0];
 				xyz[1] = dv->xyz[1];
@@ -1317,41 +1311,35 @@ static void RB_SurfaceGrid( srfGridMesh_t *cv ) {
 			}
 		}
 
-
-		// add the indexes
+		// Optimized hardware triangle indexing block allocation
 		{
-			int numIndexes;
-			int w, h;
+			int numIndexes = tess.numIndexes;
+			int w = lodWidth - 1;
+			int h = rows - 1;
+			glIndex_t *tessIdxPtr = &tess.indexes[numIndexes];
 
-			h = rows - 1;
-			w = lodWidth - 1;
-			numIndexes = tess.numIndexes;
 			for ( i = 0 ; i < h ; i++ ) {
+				int rowOffset1 = numVertexes + i * lodWidth;
+				int rowOffset2 = rowOffset1 + lodWidth;
 				for ( j = 0 ; j < w ; j++ ) {
-					int v1, v2, v3, v4;
+					int v1 = rowOffset1 + j + 1;
+					int v2 = rowOffset1 + j;
+					int v3 = rowOffset2 + j;
+					int v4 = v3 + 1;
 
-					// vertex order to be reckognized as tristrips
-					v1 = numVertexes + i * lodWidth + j + 1;
-					v2 = v1 - 1;
-					v3 = v2 + lodWidth;
-					v4 = v3 + 1;
-
-					tess.indexes[numIndexes] = v2;
-					tess.indexes[numIndexes + 1] = v3;
-					tess.indexes[numIndexes + 2] = v1;
-
-					tess.indexes[numIndexes + 3] = v1;
-					tess.indexes[numIndexes + 4] = v3;
-					tess.indexes[numIndexes + 5] = v4;
-					numIndexes += 6;
+					tessIdxPtr[0] = v2;
+					tessIdxPtr[1] = v3;
+					tessIdxPtr[2] = v1;
+					tessIdxPtr[3] = v1;
+					tessIdxPtr[4] = v3;
+					tessIdxPtr[5] = v4;
+					tessIdxPtr += 6;
 				}
 			}
-
-			tess.numIndexes = numIndexes;
+			tess.numIndexes = numIndexes + (h * w * 6);
 		}
 
 		tess.numVertexes += rows * lodWidth;
-
 		used += rows - 1;
 	}
 }
