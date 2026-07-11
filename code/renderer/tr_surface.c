@@ -52,9 +52,10 @@ use the shader system.
 RB_CheckOverflow
 ==============
 */
-void RB_CheckOverflow( int verts, int indexes ) {
-	if ( tess.numVertexes + verts < SHADER_MAX_VERTEXES
-		 && tess.numIndexes + indexes < SHADER_MAX_INDEXES ) {
+extern inline void RB_CheckOverflow( int verts, int indexes ) {
+	// Use branch prediction optimization: buffer space availability is the highly likely path
+	if ( __builtin_expect( (tess.numVertexes + verts < SHADER_MAX_VERTEXES) && 
+	                       (tess.numIndexes + indexes < SHADER_MAX_INDEXES), 1 ) ) {
 		return;
 	}
 
