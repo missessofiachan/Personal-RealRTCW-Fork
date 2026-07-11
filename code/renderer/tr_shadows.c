@@ -262,25 +262,23 @@ void RB_ShadowTessEnd( void ) {
 		qglDisableClientState( GL_COLOR_ARRAY );
 #endif
 
-	GL_Cull( CT_BACK_SIDED );
-	qglStencilOp( GL_KEEP, GL_KEEP, GL_INCR );
-
+	// ==========================================
+	// MODERNIZED: Carmack's Reverse (Z-Fail)
+	// ==========================================
+	// Swap from Z-Pass to Z-Fail. This keeps the stencil count accurate 
+	// even if the camera passes directly inside an NPC's shadow volume.
+	
+	GL_Cull( CT_FRONT_SIDED );                 // Render BACK faces
+	qglStencilOp( GL_KEEP, GL_INCR, GL_KEEP ); // Increment stencil on depth FAIL
 	R_RenderShadowEdges();
 
-	GL_Cull( CT_FRONT_SIDED );
-	qglStencilOp( GL_KEEP, GL_KEEP, GL_DECR );
+	GL_Cull( CT_BACK_SIDED );                  // Render FRONT faces
+	qglStencilOp( GL_KEEP, GL_DECR, GL_KEEP ); // Decrement stencil on depth FAIL
 
 #ifdef USE_OPENGLES
 	qglDrawElements(GL_TRIANGLES, idx, GL_UNSIGNED_SHORT, indexes);
 #else
 	R_RenderShadowEdges();
-#endif
-
-#ifdef USE_OPENGLES
-	if (text)
-		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-	if (glcol)
-		qglEnableClientState( GL_COLOR_ARRAY );
 #endif
 	// reenable writing to the color buffer
 	qglColorMask(rgba[0], rgba[1], rgba[2], rgba[3]);
