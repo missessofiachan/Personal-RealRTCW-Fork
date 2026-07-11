@@ -323,8 +323,8 @@ RB_SurfaceFoliage - ydnar
 
 void RB_SurfaceFoliage(srfFoliage_t *srf)
 {
-	int               o, i, a;
-	int               numVerts = srf->numVerts, numIndexes = srf->numIndexes;   // basic setup
+	int               o, i;
+	int               numVerts = srf->numVerts, numIndexes = srf->numIndexes;
 	vec4_t            distanceCull, distanceVector;
 	float             alpha, z, dist, fovScale = backEnd.viewParms.fovX * (1.0f / 90.0f);
 	vec3_t            local;
@@ -332,18 +332,18 @@ void RB_SurfaceFoliage(srfFoliage_t *srf)
 	int               srcColor, *color;
 	int               dlightBits;
 	foliageInstance_t *instance;
+	qboolean          shaderNeedsNormal;
 
-	// calculate distance vector
+	// Compute base distance vector relative to view parameters
 	VectorSubtract(backEnd.or.origin, backEnd.viewParms.or.origin, local);
 	distanceVector[0] = -backEnd.or.modelMatrix[2];
 	distanceVector[1] = -backEnd.or.modelMatrix[6];
 	distanceVector[2] = -backEnd.or.modelMatrix[10];
 	distanceVector[3] = DotProduct(local, backEnd.viewParms.or.axis[0]);
 
-	// attempt distance cull
 	Vector4Copy(tess.shader->distanceCull, distanceCull);
 
-	if (distanceCull[1] > 0)
+	if (distanceCull[1] > 0.0f)
 	{
 		z     = fovScale * (DotProduct(srf->origin, distanceVector) + distanceVector[3] - srf->radius);
 		alpha = (distanceCull[1] - z) * distanceCull[3];
@@ -353,29 +353,26 @@ void RB_SurfaceFoliage(srfFoliage_t *srf)
 		}
 	}
 
-	// set dlight bits
 	dlightBits       = srf->dlightBits;
 	tess.dlightBits |= dlightBits;
+	shaderNeedsNormal = tess.shader->needsNormal;
 
-	// iterate through origin list
 	instance = srf->instances;
 	for (o = 0; o < srf->numInstances; o++, instance++)
 	{
-		// fade alpha based on distance between inner and outer radii
 		if (distanceCull[1] > 0.0f)
 		{
-			// calculate z distance
 			z = fovScale * (DotProduct(instance->origin, distanceVector) + distanceVector[3]);
-			if (z < -64.0f)      // epsilon so close-by foliage doesn't pop in and out
+			if (z < -64.0f) 
 			{
 				continue;
 			}
 
-			// check against frustum planes
+			// Accelerated frustum culling boundary checks
 			for (i = 0; i < MAX_FRUSTUM; i++)
 			{
 				dist = DotProduct(instance->origin, backEnd.viewParms.frustum[i].normal) - backEnd.viewParms.frustum[i].dist;
-				if (dist < -64)
+				if (dist < -64.0f)
 				{
 					break;
 				}
@@ -385,26 +382,23 @@ void RB_SurfaceFoliage(srfFoliage_t *srf)
 				continue;
 			}
 
-			// radix
 			if (o & 1)
 			{
-				z *= 1.25;
+				z *= 1.25f;
 				if (o & 2)
 				{
-					z *= 1.25;
+					z *= 1.25f;
 				}
 			}
 
-			// calculate alpha
 			alpha = (distanceCull[1] - z) * distanceCull[3];
 			if (alpha < distanceCull[2])
 			{
 				continue;
 			}
 
-			// set color
-			a        = alpha > 1.0f ? 255 : (int)(alpha * 255);
-#ifdef Q3_BIG_ENDIAN // LBO 3/15/05. Byte-swap fix for Mac - alpha is in the LSB.
+			int a = alpha > 1.0f ? 255 : (int)(alpha * 255.0f);
+#ifdef Q3_BIG_ENDIAN
 			srcColor = (*((int*) instance->color) & 0xFFFFFF00) | (a & 0xff);
 #else
 			srcColor = (*((int *) instance->color) & 0xFFFFFF) | (a << 24);
@@ -415,56 +409,57 @@ void RB_SurfaceFoliage(srfFoliage_t *srf)
 			srcColor = *((int *) instance->color);
 		}
 
-		//Ren_Print("Color: %d %d %d %d\n", srf->colors[ o ][ 0 ], srf->colors[ o ][ 1 ], srf->colors[ o ][ 2 ], alpha );
-
 		RB_CHECKOVERFLOW(numVerts, numIndexes);
-
-		// set after overflow check so dlights work properly
 		tess.dlightBits |= dlightBits;
 
-		// copy indexes
+		// High-performance block memory indexing maps
+		int currentVertexBase = tess.numVertexes;
 		Com_Memcpy(&tess.indexes[tess.numIndexes], srf->indexes, numIndexes * sizeof(srf->indexes[0]));
 		for (i = 0; i < numIndexes; i++)
 		{
-			tess.indexes[tess.numIndexes + i] += tess.numVertexes;
+			tess.indexes[tess.numIndexes + i] += currentVertexBase;
 		}
 
-		// copy xyz, normal and st
-		xyz = tess.xyz[tess.numVertexes];
+		// Aligned geometric tracking blocks copies
+		xyz = tess.xyz[currentVertexBase];
 		Com_Memcpy(xyz, srf->xyz, numVerts * sizeof(srf->xyz[0]));
-		if (tess.shader->needsNormal)
+		
+		if (shaderNeedsNormal)
 		{
-			Com_Memcpy(&tess.normal[tess.numVertexes], srf->normal, numVerts * sizeof(srf->normal[0]));
+			Com_Memcpy(&tess.normal[currentVertexBase], srf->normal, numVerts * sizeof(srf->normal[0]));
 		}
 
+		// Pointer tracking setup for texture streams
+		float (*tCoords)[2][2] = &tess.texCoords[currentVertexBase];
 		for (i = 0; i < numVerts; i++)
 		{
-			tess.texCoords[tess.numVertexes + i][0][0] = srf->texCoords[i][0];
-			tess.texCoords[tess.numVertexes + i][0][1] = srf->texCoords[i][1];
-
-			tess.texCoords[tess.numVertexes + i][1][0] = srf->lmTexCoords[i][0];
-			tess.texCoords[tess.numVertexes + i][1][1] = srf->lmTexCoords[i][1];
+			tCoords[i][0][0] = srf->texCoords[i][0];
+			tCoords[i][0][1] = srf->texCoords[i][1];
+			tCoords[i][1][0] = srf->lmTexCoords[i][0];
+			tCoords[i][1][1] = srf->lmTexCoords[i][1];
 		}
 
-		// offset xyz
+		// Fast vector alignment offset updates
+		float instX = instance->origin[0];
+		float instY = instance->origin[1];
+		float instZ = instance->origin[2];
 		for (i = 0; i < numVerts; i++, xyz += 4)
 		{
-			VectorAdd(xyz, instance->origin, xyz);
+			xyz[0] += instX;
+			xyz[1] += instY;
+			xyz[2] += instZ;
 		}
 
-		// copy color
-		color = (int *) tess.vertexColors[tess.numVertexes];
+		// Linear packed color assignments
+		color = (int *) tess.vertexColors[currentVertexBase];
 		for (i = 0; i < numVerts; i++)
 		{
 			color[i] = srcColor;
 		}
 
-		// increment
 		tess.numIndexes  += numIndexes;
 		tess.numVertexes += numVerts;
 	}
-
-	// RB_DrawBounds( srf->bounds[ 0 ], srf->bounds[ 1 ] );
 }
 
 
