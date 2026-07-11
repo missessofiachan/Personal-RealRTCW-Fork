@@ -258,6 +258,19 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		normal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
 
 		VectorMA( direction, factor, normal, direction );
+	// ==========================================
+		// MODERNIZED: Intensity-Weighted Light Vector
+		// ==========================================
+		float nodeIntensity = (float)data[3] + (float)data[4] + (float)data[5];
+
+		if ( nodeIntensity > 0.0f ) {
+			// Bright nodes dominate the direction calculation
+			float weight = factor * (nodeIntensity / 255.0f);
+			VectorMA( direction, weight, normal, direction );
+		} else {
+			// Dark nodes are given negligible weight so they don't break the vector
+			VectorMA( direction, factor * 0.01f, normal, direction );
+		}
 	}
 
 	if ( totalFactor > 0 && totalFactor < 0.99 ) {
