@@ -1075,18 +1075,13 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	int Bob, Doug;
 	int numVerts;
 
-	// RF, check for REFLAG_HANDONLY
 	if ( backEnd.currentEntity->e.reFlags & REFLAG_ONLYHAND ) {
 		if ( !strstr( surface->name, "hand" ) ) {
 			return;
 		}
 	}
 
-	if (  backEnd.currentEntity->e.oldframe == backEnd.currentEntity->e.frame ) {
-		backlerp = 0;
-	} else  {
-		backlerp = backEnd.currentEntity->e.backlerp;
-	}
+	backlerp = ( backEnd.currentEntity->e.oldframe == backEnd.currentEntity->e.frame ) ? 0.0f : backEnd.currentEntity->e.backlerp;
 
 	RB_CHECKOVERFLOW( surface->numVerts, surface->numTriangles * 3 );
 
@@ -1096,18 +1091,23 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	indexes = surface->numTriangles * 3;
 	Bob = tess.numIndexes;
 	Doug = tess.numVertexes;
+	
 	for ( j = 0 ; j < indexes ; j++ ) {
 		tess.indexes[Bob + j] = Doug + triangles[j];
 	}
 	tess.numIndexes += indexes;
 
 	texCoords = ( float * )( (byte *)surface + surface->ofsSt );
-
 	numVerts = surface->numVerts;
+
+	float *tessTex = &tess.texCoords[Doug][0][0];
 	for ( j = 0; j < numVerts; j++ ) {
-		tess.texCoords[Doug + j][0][0] = texCoords[j * 2 + 0];
-		tess.texCoords[Doug + j][0][1] = texCoords[j * 2 + 1];
-		// FIXME: fill in lightmapST for completeness?
+		float s = texCoords[j * 2 + 0];
+		float t = texCoords[j * 2 + 1];
+		
+		tessTex[0] = tessTex[2] = s;
+		tessTex[1] = tessTex[3] = t;
+		tessTex += 4;
 	}
 
 	tess.numVertexes += surface->numVerts;
