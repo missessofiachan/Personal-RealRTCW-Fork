@@ -310,11 +310,13 @@ void RB_ShadowFinish( void ) {
 
 	qglLoadIdentity();
 
-	qglColor3f( 0.6f, 0.6f, 0.6f );
-	GL_State( GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO );
-
-//	qglColor3f( 1, 0, 0 );
-//	GL_State( GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO );
+	// ==========================================
+	// MODERNIZED: Cinematic Ambient Alpha Blend
+	// ==========================================
+	// Instead of crushing colors with a muddy gray multiplier, we apply a 
+	// realistic cinematic shadow color (rich deep blue/slate) at 45% opacity.
+	qglColor4f( 0.08f, 0.1f, 0.15f, 0.45f ); 
+	GL_State( GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
 
 #ifdef USE_OPENGLES
 	GLboolean text = qglIsEnabled(GL_TEXTURE_COORD_ARRAY);
