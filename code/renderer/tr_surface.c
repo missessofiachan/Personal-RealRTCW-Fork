@@ -1439,7 +1439,7 @@ static void RB_SurfaceFlare( srfFlare_t *surf ) {
 static void RB_SurfaceSkip( void *surf ) {
 }
 
-
+// Global System Backend Surface Jump Table Mapping
 void( *rb_surfaceTable[SF_NUM_SURFACE_TYPES] ) ( void * ) = {
 	( void( * ) ( void* ) )RB_SurfaceBad,          // SF_BAD,
 	( void( * ) ( void* ) )RB_SurfaceSkip,         // SF_SKIP,
