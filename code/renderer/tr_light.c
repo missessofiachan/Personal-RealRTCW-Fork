@@ -257,7 +257,7 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		normal[1] = tr.sinTable[lat] * tr.sinTable[lng];
 		normal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
 
-		VectorMA( direction, factor, normal, direction );
+	
 	    // ==========================================
 		// MODERNIZED: Intensity-Weighted Light Vector
 		// ==========================================
@@ -428,13 +428,39 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 
 			VectorMA( ent->directedLight, finalIntensity, dl->color, ent->directedLight );
 			VectorMA( lightDir, finalIntensity, dir, lightDir );
+			// NEW: Fake Light Bounce / Ambient Scatter
+			// Inject 25% of the dynamic light into the ambient channel 
+			// to simulate floor/wall bounce lighting.
+			VectorMA( ent->ambientLight, finalIntensity * 0.25f, dl->color, ent->ambientLight );
 		}
 	}
 
-	// clamp ambient
-	for ( i = 0 ; i < 3 ; i++ ) {
-		if ( ent->ambientLight[i] > tr.identityLightByte ) {
-			ent->ambientLight[i] = tr.identityLightByte;
+    // ==========================================
+	// MODERNIZED: Saturation-Preserving Color Clamp
+	// ==========================================
+	{
+		float maxAmbient = ent->ambientLight[0];
+		if ( ent->ambientLight[1] > maxAmbient ) maxAmbient = ent->ambientLight[1];
+		if ( ent->ambientLight[2] > maxAmbient ) maxAmbient = ent->ambientLight[2];
+
+		if ( maxAmbient > (float)tr.identityLightByte ) {
+			float scale = (float)tr.identityLightByte / maxAmbient;
+			ent->ambientLight[0] *= scale;
+			ent->ambientLight[1] *= scale;
+			ent->ambientLight[2] *= scale;
+		}
+	}
+
+	{
+		float maxDirected = ent->directedLight[0];
+		if ( ent->directedLight[1] > maxDirected ) maxDirected = ent->directedLight[1];
+		if ( ent->directedLight[2] > maxDirected ) maxDirected = ent->directedLight[2];
+
+		if ( maxDirected > 255.0f ) {
+			float scale = 255.0f / maxDirected;
+			ent->directedLight[0] *= scale;
+			ent->directedLight[1] *= scale;
+			ent->directedLight[2] *= scale;
 		}
 	}
 
@@ -447,7 +473,7 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 	ent->lightDir[0] = DotProduct( lightDir, ent->e.axis[0] );
 	ent->lightDir[1] = DotProduct( lightDir, ent->e.axis[1] );
 	ent->lightDir[2] = DotProduct( lightDir, ent->e.axis[2] );
-}
+} // <-- This brace cleanly closes R_SetupEntityLighting
 
 /*
 =================
