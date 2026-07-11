@@ -394,15 +394,28 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 		VectorSubtract( dl->origin, lightOrigin, dir );
 		d = VectorNormalize( dir );
 
-		power = DLIGHT_AT_RADIUS * ( dl->radius * dl->radius );
-		if ( d < DLIGHT_MINIMUM_RADIUS ) {
-			d = DLIGHT_MINIMUM_RADIUS;
+		// ==========================================
+		// MODERNIZED: Smooth PBR Light Attenuation
+		// ==========================================
+		// Replaces old harsh (power / d^2) math with a windowed falloff factor.
+		// This creates a photographic, velvet-smooth light gradient on models.
+		if ( d < dl->radius ) {
+			float ratio = d / dl->radius;
+			float ratioSq = ratio * ratio;
+			
+			// Modern inverse-square curve with a smooth window function at the edge
+			float window = 1.0f - (ratioSq * ratioSq);
+			if (window < 0.0f) window = 0.0f;
+			
+			// Calculate final light contribution factor
+			float attenuation = (window * window) / (ratioSq + 0.1f);
+			
+			// Scale to match engine expectation thresholds
+			float finalIntensity = attenuation * DLIGHT_AT_RADIUS * 0.45f;
+
+			VectorMA( ent->directedLight, finalIntensity, dl->color, ent->directedLight );
+			VectorMA( lightDir, finalIntensity, dir, lightDir );
 		}
-
-		d = power / ( d * d );
-
-		VectorMA( ent->directedLight, d, dl->color, ent->directedLight );
-		VectorMA( lightDir, d, dir, lightDir );
 	}
 
 	// clamp ambient
