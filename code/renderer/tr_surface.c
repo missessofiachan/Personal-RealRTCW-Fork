@@ -221,32 +221,31 @@ static void RB_SurfacePolychain( srfPoly_t *p ) {
 
 	RB_CHECKOVERFLOW( p->numVerts, 3 * ( p->numVerts - 2 ) );
 
-	// fan triangles into the tess array
 	numv = tess.numVertexes;
-	for (i = 0; i < p->numVerts; i++)
-	{
-		VectorCopy(p->verts[i].xyz, tess.xyz[numv]);
+	for (i = 0; i < p->numVerts; i++) {
+		int currentIdx = numv + i;
+		VectorCopy(p->verts[i].xyz, tess.xyz[currentIdx]);
 
-		tess.texCoords[numv][0][0] = p->verts[i].st[0];
-		tess.texCoords[numv][0][1] = p->verts[i].st[1];
+		tess.texCoords[currentIdx][0][0] = tess.texCoords[currentIdx][1][0] = p->verts[i].st[0];
+		tess.texCoords[currentIdx][0][1] = tess.texCoords[currentIdx][1][1] = p->verts[i].st[1];
 
-		tess.vertexColors[numv][0] = R_GammaByte(p->verts[i].modulate[0]);
-		tess.vertexColors[numv][1] = R_GammaByte(p->verts[i].modulate[1]);
-		tess.vertexColors[numv][2] = R_GammaByte(p->verts[i].modulate[2]);
-		tess.vertexColors[numv][3] = p->verts[i].modulate[3];
-
-		numv++;
+		tess.vertexColors[currentIdx][0] = R_GammaByte(p->verts[i].modulate[0]);
+		tess.vertexColors[currentIdx][1] = R_GammaByte(p->verts[i].modulate[1]);
+		tess.vertexColors[currentIdx][2] = R_GammaByte(p->verts[i].modulate[2]);
+		tess.vertexColors[currentIdx][3] = p->verts[i].modulate[3];
 	}
 
-	// generate fan indexes into the tess array
-	for ( i = 0; i < p->numVerts - 2; i++ ) {
-		tess.indexes[tess.numIndexes + 0] = tess.numVertexes;
-		tess.indexes[tess.numIndexes + 1] = tess.numVertexes + i + 1;
-		tess.indexes[tess.numIndexes + 2] = tess.numVertexes + i + 2;
-		tess.numIndexes += 3;
+	int idxBase = tess.numIndexes;
+	int vertMax = p->numVerts - 2;
+	for ( i = 0; i < vertMax; i++ ) {
+		tess.indexes[idxBase + 0] = tess.numVertexes;
+		tess.indexes[idxBase + 1] = tess.numVertexes + i + 1;
+		tess.indexes[idxBase + 2] = tess.numVertexes + i + 2;
+		idxBase += 3;
 	}
 
-	tess.numVertexes = numv;
+	tess.numIndexes  = idxBase;
+	tess.numVertexes += p->numVerts;
 }
 
 
