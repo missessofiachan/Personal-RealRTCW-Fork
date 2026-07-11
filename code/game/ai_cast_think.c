@@ -733,24 +733,27 @@ void AICast_Think( int client, float thinktime ) {
 	//retrieve the current client state
 	BotAI_GetClientState( client, &( cs->bs->cur_ps ) );
 	//
-	// setup movement speeds for the given state
-	// walking
-	animIndex = BG_GetAnimScriptAnimation( cs->entityNum, ent->client->ps.aiState, ANIM_MT_WALK );
-	if ( animIndex >= 0 ) {
-		anim = BG_GetAnimationForIndex( cs->entityNum, animIndex );
-		cs->attributes[WALKING_SPEED] = anim->moveSpeed;
-	}
-	// crouching
-	animIndex = BG_GetAnimScriptAnimation( cs->entityNum, ent->client->ps.aiState, ANIM_MT_WALKCR );
-	if ( animIndex >= 0 ) {
-		anim = BG_GetAnimationForIndex( cs->entityNum, animIndex );
-		cs->attributes[CROUCHING_SPEED] = anim->moveSpeed;
-	}
-	// running
-	animIndex = BG_GetAnimScriptAnimation( cs->entityNum, ent->client->ps.aiState, ANIM_MT_RUN );
-	if ( animIndex >= 0 ) {
-		anim = BG_GetAnimationForIndex( cs->entityNum, animIndex );
-		cs->attributes[RUNNING_SPEED] = anim->moveSpeed;
+	// setup movement speeds for the given state (cached by aiState to avoid redundant dynamic lookups every frame)
+	if ( cs->lastSpeedUpdateState != ent->client->ps.aiState ) {
+		// walking
+		animIndex = BG_GetAnimScriptAnimation( cs->entityNum, ent->client->ps.aiState, ANIM_MT_WALK );
+		if ( animIndex >= 0 ) {
+			anim = BG_GetAnimationForIndex( cs->entityNum, animIndex );
+			cs->attributes[WALKING_SPEED] = anim->moveSpeed;
+		}
+		// crouching
+		animIndex = BG_GetAnimScriptAnimation( cs->entityNum, ent->client->ps.aiState, ANIM_MT_WALKCR );
+		if ( animIndex >= 0 ) {
+			anim = BG_GetAnimationForIndex( cs->entityNum, animIndex );
+			cs->attributes[CROUCHING_SPEED] = anim->moveSpeed;
+		}
+		// running
+		animIndex = BG_GetAnimScriptAnimation( cs->entityNum, ent->client->ps.aiState, ANIM_MT_RUN );
+		if ( animIndex >= 0 ) {
+			anim = BG_GetAnimationForIndex( cs->entityNum, animIndex );
+			cs->attributes[RUNNING_SPEED] = anim->moveSpeed;
+		}
+		cs->lastSpeedUpdateState = ent->client->ps.aiState;
 	}
 	// update crouch speed scale
 	ent->client->ps.crouchSpeedScale = cs->attributes[CROUCHING_SPEED] / cs->attributes[RUNNING_SPEED];

@@ -133,6 +133,10 @@ qboolean AICast_VisibleFromPos( vec3_t srcpos, int srcnum,
 	VectorCopy( srcpos, eye );
 	eye[2] += srcviewheight;
 	//
+	if ( updateVisPos && !trap_InPVS( eye, middle ) ) {
+		return qfalse;
+	}
+	//
 	// set the right vector
 	VectorSubtract( middle, eye, vec );
 	VectorNormalize( vec );
@@ -680,7 +684,19 @@ void AICast_SightUpdate( int numchecks ) {
 			}
 
 			// if we recently checked this vis, skip
-			if ( vis->lastcheck_timestamp >= level.time - ( 40 + rand() % 40 ) ) {
+			float dist = VectorDistance( srcent->client->ps.origin, destent->client->ps.origin );
+			int checkDelay;
+			if ( dist < 500.0f ) {
+				// To restore default close-range behavior, set: checkDelay = 40 + rand() % 40;
+				checkDelay = 30 + rand() % 30;
+			} else if ( dist > 1500.0f ) {
+				// To restore default far-range behavior, set: checkDelay = 40 + rand() % 40;
+				checkDelay = 200 + rand() % 200;
+			} else {
+				checkDelay = 40 + rand() % 40;
+			}
+
+			if ( vis->lastcheck_timestamp >= level.time - checkDelay ) {
 				continue;
 			}
 
@@ -749,7 +765,19 @@ void AICast_SightUpdate( int numchecks ) {
 			vis = &cs->vislist[destent->s.number];
 
 			// don't check too often
-			if ( vis->lastcheck_timestamp > ( level.time - SIGHT_MIN_DELAY ) ) {
+			float dist = VectorDistance( srcent->client->ps.origin, destent->client->ps.origin );
+			int minDelay;
+			if ( dist < 500.0f ) {
+				// To restore default close-range behavior, set: minDelay = SIGHT_MIN_DELAY;
+				minDelay = 100;
+			} else if ( dist > 1500.0f ) {
+				// To restore default far-range behavior, set: minDelay = SIGHT_MIN_DELAY;
+				minDelay = 800;
+			} else {
+				minDelay = SIGHT_MIN_DELAY;
+			}
+
+			if ( vis->lastcheck_timestamp > ( level.time - minDelay ) ) {
 				continue;
 			}
 

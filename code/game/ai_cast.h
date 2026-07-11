@@ -600,6 +600,8 @@ typedef struct cast_state_s
 	int defendExpireTime; 
 	int defendRepathTime;
 
+	int lastSpeedUpdateState;
+
 } cast_state_t;
 //
 #define CSFOFS( x ) ( (size_t)&( ( (cast_state_t *)0 )->x ) )

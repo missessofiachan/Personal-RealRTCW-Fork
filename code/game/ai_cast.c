@@ -446,6 +446,7 @@ gentity_t *AICast_CreateCharacter( gentity_t *ent, float *attributes, cast_weapo
 	cs->weaponInfo = weaponInfo;
 	//
 	cs->lastThink = level.time;
+	cs->lastSpeedUpdateState = -1;
 	//
 	newent->pain = AICast_Pain;
 	newent->die = AICast_Die;

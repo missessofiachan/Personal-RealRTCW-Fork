@@ -125,6 +125,18 @@ This repository is a modernized, high-performance fork of the Return to Castle W
   * *Benefit 1*: Bypasses multiple expensive trigonometric conversions and divisions per sight check, significantly boosting CPU performance on maps with high actor counts.
   * *Benefit 2*: Prevents CPU instruction pipeline stalls by replacing branch-heavy logic with direct, register-level vector equations.
   * *Benefit 3*: Standardizes the visibility model into a consistent 3D visual cone, improving AI detection consistency.
+* **Early-Exit PVS Check**: Runs a fast Potential Visibility Set (`trap_InPVS`) check at the start of visibility checks before performing expensive multi-point raycasts.
+  * *Benefit 1*: Instantly discards calculations for characters separated by solid world geometry without executing any raycasts.
+  * *Benefit 2*: Substantially reduces CPU usage when players and AI move between different rooms or indoor areas.
+  * *Benefit 3*: Keeps the instruction cache clean by skipping the main loop code paths for out-of-sight actors.
+* **Proximity-Based Dynamic Time-Slicing**: Dynamically adjusts sight check delays based on the 3D distance between characters.
+  * *Benefit 1*: Lowers sight checking latency to `100ms` for close-range actors, making close-quarters AI reactions twice as fast and sharp.
+  * *Benefit 2*: Safely scales up delays for far-away actors up to `800ms`, removing significant processing overhead for distant characters.
+  * *Benefit 3*: Ensures AI responsiveness is directed where it is most noticeable to the player, optimizing game feel.
+* **Cached Animation Speed Lookup**: Caches the movement speeds retrieved from the character animation script based on `aiState`.
+  * *Benefit 1*: Eradicates three complex animation script parsing and indexing operations per character every frame.
+  * *Benefit 2*: Minimizes CPU instruction cache cycles in the AI main think loop.
+  * *Benefit 3*: Keeps physics tick execution times stable even during high-density character engagements.
 
 ### ⚡ Modernized x86_64 JIT QVM Compiler (`vm_x86.c` / `vm.c` / `vm_local.h`)
 * **Dynamic Register Caching**: Caches QVM stack variables directly in x86-64 registers (RAX, RCX, RDX) via `vm_optimize.h`.
