@@ -195,9 +195,13 @@ void RB_ShadowTessEnd( void ) {
 
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 
-	// project vertexes away from light direction
+	// ==========================================
+	// MODERNIZED: Extended Shadow Extrusion
+	// ==========================================
+	// We bump the extrusion from -512 to -3000. This ensures shadows 
+	// don't clip through the air when entities are on high balconies or stairs.
 	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
-		VectorMA( tess.xyz[i], -512, lightDir, shadowXyz[i] );
+		VectorMA( tess.xyz[i], -3000.0f, lightDir, shadowXyz[i] );
 	}
 
 	// decide which triangles face the light
