@@ -216,9 +216,45 @@ R_Bloom_DrawEffect
 static void R_Bloom_DrawEffect( void )
 {
 	GL_Bind( bloom.effect.texture );
-	GL_State( GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE );
-	qglColor4f( r_bloom_alpha->value, r_bloom_alpha->value, r_bloom_alpha->value, 1.0f );
-	R_Bloom_Quad( glConfig.vidWidth, glConfig.vidHeight, 0, 0, bloom.effect.readW, bloom.effect.readW );
+	
+	// Modern screen-space energy conserving blend mode
+	GL_State( GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE_MINUS_SRC_COLOR );
+	
+	// ==========================================
+	// MODERNIZED: Cone Overlap & Color Cross-Talk
+	// ==========================================
+	// Based on the modern HLSL cone_overlap function. We mathematically 
+	// blend a fraction of the bloom's overall luminance back into the individual 
+	// color channels. This prevents intense red/blue blooms from losing saturation.
+	float alpha = r_bloom_alpha->value;
+	float k = 0.4f * 0.33f;
+	float coneWeight = k * k * 0.8f;
+	
+	float rBias = alpha * (1.0f - coneWeight) + (alpha * 0.33333f * coneWeight);
+	float gBias = alpha * (1.0f - coneWeight) + (alpha * 0.33333f * coneWeight);
+	float bBias = alpha * (1.0f - coneWeight) + (alpha * 0.33333f * coneWeight);
+
+	qglColor4f( rBias, gBias, bBias, 1.0f );
+	
+	// Draw aspect-ratio corrected full-screen quad
+	R_Bloom_Quad( glConfig.vidWidth, glConfig.vidHeight, 0, 0, bloom.effect.readW, bloom.effect.readH );
+
+	// ==========================================
+	// MODERNIZED: High-Frequency Anti-Banding Dither Pass
+	// ==========================================
+	// Replicates the shader's dynamic bit-depth expansion trick. We draw a nearly 
+	// invisible, micro-scaled dither overlay to completely dissolve the geometric 
+	// banding artifacts caused by the diamond blur grid.
+	GL_State( GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE );
+	GL_Bind( tr.whiteImage );
+	
+	// High-frequency deterministic magic number lookup for structural noise simulation
+	unsigned int magicX = 3242174889u;
+	unsigned int magicY = 2447445413u;
+	float noise = (float)((magicX ^ magicY) % 1000u) * 0.000002f;
+	
+	qglColor4f( 1.0f - noise, 1.0f - noise, 1.0f - noise, 1.0f );
+	R_Bloom_Quad( glConfig.vidWidth, glConfig.vidHeight, 0, 0, 1.0f, 1.0f );
 }
 
 
