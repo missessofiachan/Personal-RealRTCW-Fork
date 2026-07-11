@@ -258,7 +258,7 @@ static void R_SetupEntityLightingGrid( trRefEntity_t *ent ) {
 		normal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
 
 		VectorMA( direction, factor, normal, direction );
-	// ==========================================
+	    // ==========================================
 		// MODERNIZED: Intensity-Weighted Light Vector
 		// ==========================================
 		float nodeIntensity = (float)data[3] + (float)data[4] + (float)data[5];
