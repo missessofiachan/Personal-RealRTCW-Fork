@@ -924,20 +924,14 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 ** R_LatLongToNormal
 */
 void R_LatLongToNormal( vec3_t outNormal, short latLong ) {
-	unsigned lat, lng;
+	unsigned lat = ( latLong >> 8 ) & 0xff;
+	unsigned lng = ( latLong & 0xff );
+	lat <<= 2;
+	lng <<= 2;
 
-	lat = ( latLong >> 8 ) & 0xff;
-	lng = ( latLong & 0xff );
-	lat *= ( FUNCTABLE_SIZE / 256 );
-	lng *= ( FUNCTABLE_SIZE / 256 );
-
-	// decode X as cos( lat ) * sin( long )
-	// decode Y as sin( lat ) * sin( long )
-	// decode Z as cos( long )
-
-	outNormal[0] = tr.sinTable[( lat + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK] * tr.sinTable[lng];
+	outNormal[0] = tr.sinTable[( lat + 256 ) & FUNCTABLE_MASK] * tr.sinTable[lng];
 	outNormal[1] = tr.sinTable[lat] * tr.sinTable[lng];
-	outNormal[2] = tr.sinTable[( lng + ( FUNCTABLE_SIZE / 4 ) ) & FUNCTABLE_MASK];
+	outNormal[2] = tr.sinTable[( lng + 256 ) & FUNCTABLE_MASK];
 }
 
 // Ridah
