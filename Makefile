@@ -235,6 +235,10 @@ ifndef USE_INTERNAL_LIBS
 USE_INTERNAL_LIBS=1
 endif
 
+ifndef USE_MIMALLOC
+USE_MIMALLOC=1
+endif
+
 ifndef USE_INTERNAL_OGG
 USE_INTERNAL_OGG=$(USE_INTERNAL_LIBS)
 endif
@@ -336,6 +340,13 @@ LIBSDIR=$(MOUNT_DIR)/libs
 BSPCDIR=$(MOUNT_DIR)/../sdk/rtcw-bspc-custom/src/bspc
 BSPCBLIBDIR=$(MOUNT_DIR)/../sdk/rtcw-bspc-custom/src/botlib
 BSPCCMDIR=$(MOUNT_DIR)/../sdk/rtcw-bspc-custom/src/qcommon
+MIMALLOCDIR=$(MOUNT_DIR)/mimalloc
+
+ifeq ($(USE_MIMALLOC),1)
+  MIMALLOC_CFLAGS = -I$(MIMALLOCDIR)/include -DMI_OVERRIDE
+  # mimalloc needs atomic operations and pthreads
+  MIMALLOC_LIBS = -lpthread -latomic
+endif
 
 bin_path=$(shell which $(1) 2> /dev/null)
 
@@ -446,6 +457,13 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu" "gnu")
 
   CFLAGS = $(FFMPEG_CFLAGS)
   LIBS  += $(FFMPEG_LIBS)
+
+  ifeq ($(USE_MIMALLOC),1)
+    CFLAGS += $(MIMALLOC_CFLAGS)
+    CLIENT_CFLAGS += $(MIMALLOC_CFLAGS)
+    CLIENT_LIBS += $(MIMALLOC_LIBS)
+    LIBS += $(MIMALLOC_LIBS)
+  endif
 
   ifeq ($(USE_LOCAL_HEADERS),1)
     CLIENT_CFLAGS += -I$(SDLHDIR)/include
@@ -2434,9 +2452,15 @@ ifeq ($(PLATFORM),darwin)
     $(B)/client/sys_osx.o
 endif
 
-ifeq ($(USE_MUMBLE),1)
+ifneq ($(USE_MUMBLE),1)
+else
   Q3OBJ += \
     $(B)/client/libmumblelink.o
+endif
+
+ifeq ($(USE_MIMALLOC),1)
+  Q3OBJ += \
+    $(B)/client/mi_static.o
 endif
 
 ifneq ($(USE_RENDERER_DLOPEN),0)
@@ -2596,6 +2620,11 @@ else
   Q3DOBJ += \
     $(B)/ded/sys_unix.o \
     $(B)/ded/con_tty.o
+endif
+
+ifeq ($(USE_MIMALLOC),1)
+  Q3DOBJ += \
+    $(B)/ded/mi_static.o
 endif
 
 ifeq ($(PLATFORM),darwin)
@@ -2859,6 +2888,9 @@ $(B)/client/%.o: $(OPUSFILEDIR)/src/%.c
 $(B)/client/%.o: $(ZDIR)/%.c
 	$(DO_CC)
 
+$(B)/client/mi_static.o: $(MIMALLOCDIR)/src/static.c
+	$(DO_CC) -DMI_STATIC_LIB
+
 $(B)/client/%.o: $(SDLDIR)/%.c
 	$(DO_CC)
 
@@ -2991,6 +3023,9 @@ $(B)/ded/win_resource.o: $(SYSDIR)/win_resource.rc $(SYSDIR)/win_manifest.xml
 
 $(B)/ded/%.o: $(NDIR)/%.c
 	$(DO_DED_CC)
+
+$(B)/ded/mi_static.o: $(MIMALLOCDIR)/src/static.c
+	$(DO_DED_CC) -DMI_STATIC_LIB
 
 # Extra dependencies to ensure the git version is incorporated
 ifeq ($(USE_GIT),1)

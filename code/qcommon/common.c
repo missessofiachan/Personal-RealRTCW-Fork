@@ -828,27 +828,19 @@ int Com_RealTime( qtime_t *qtime ) {
 /*
 ==============================================================================
 
-ELITE MULTI-SEGMENT ZONE MEMORY ALLOCATION
-				(Thread-Safe, SIMD-Aligned, Canary Guarded)==============================================================================
+MIMALLOC REPLACEMENT FOR ZONE MEMORY ALLOCATION
+				(Thread-Safe, High-Performance, SIMD-Aligned)
 
-  The old zone is gone, mallocs replaced it. To keep the widespread code changes down to a bare minimum
-  Z_Malloc and Z_Free still work.
+==============================================================================
 */
 
-#define USE_MULTI_SEGMENT
+#define USE_MIMALLOC_ZONE
 
-#ifdef USE_MULTI_SEGMENT
+#ifdef USE_MIMALLOC_ZONE
+#include "../mimalloc/include/mimalloc.h"
+#endif
 
-
-#define ZONE_MAGIC            0x4d5a4f4e   // 'MZON'
-#define ZONE_SEGMENT_SIZE     (2 * 1024 * 1024) // 2MB dynamic sub-blocks
-#define ZONE_BUCKETS          64
-#define ZONE_ALIGNMENT        64           // Perfect 64-byte CPU Cache Line alignment
-#define ZONE_REDZONE_SIZE     16           // 16-byte buffer overflow deadband
-#define ZONE_CANARY_PATTERN   0xDEADBEEF   // Overflow detection stamp
-#define ZONE_POISON_PATTERN   0xAA         // Use-After-Free extermination byte
-
-// Cross-platform ultra-fast Spinlock primitive for your Particle Job System
+// Cross-platform spinlock primitive used by Hunk and Event Queue locks
 #ifdef _WIN32
 #include <windows.h>
 typedef volatile LONG zoneLock_t;
@@ -863,31 +855,6 @@ typedef volatile int zoneLock_t;
 #define ZONE_UNLOCK(l)        __sync_lock_release((l))
 #endif
 
-// Main allocation tracking header
-typedef struct zoneBlock_s {
-	int                 magic;
-	int                 size;          // Total size including tracking header
-	struct zoneBlock_s *next;          // Contiguous physical next block
-	struct zoneBlock_s *prev;          // Contiguous physical prev block
-	struct zoneBlock_s *nextFree;      // Next block in size category bucket
-	struct zoneBlock_s *prevFree;      // Prev block in size category bucket
-	qboolean            isFree;
-	int                 pad;           // Ensures structure bounds align nicely
-} zoneBlock_t;
-
-// Massive memory pages requested from OS
-typedef struct zoneSegment_s {
-	struct zoneSegment_s *next;
-	int                   size;
-} zoneSegment_t;
-
-// Global Allocator State
-static zoneBlock_t    *zoneBuckets[ZONE_BUCKETS];
-static zoneSegment_t  *zoneSegments = NULL;
-static zoneLock_t      g_zoneSpinlock = 0;
-
-#endif // USE_MULTI_SEGMENT
-
 static int s_zoneTotal = 0;
 
 /*
@@ -896,137 +863,13 @@ Com_InitZoneMemory
 ========================
 */
 void Com_InitZoneMemory( void ) {
-#ifdef USE_MULTI_SEGMENT
-	ZONE_LOCK_INIT(&g_zoneSpinlock);
-	ZONE_LOCK(&g_zoneSpinlock);
-	
-	Com_Memset( zoneBuckets, 0, sizeof( zoneBuckets ) );
-	zoneSegments = NULL;
-	
-	ZONE_UNLOCK(&g_zoneSpinlock);
+#ifdef USE_MIMALLOC_ZONE
+	// Configure mimalloc for premium game memory handling
+	mi_option_set(mi_option_large_os_pages, 1);
+	mi_option_set(mi_option_eager_commit, 1);
 #endif
 	s_zoneTotal = 0;
 }
-
-#ifdef USE_MULTI_SEGMENT
-
-#define ZONE_HEADER_SIZE      64 // Keeps user data perfectly cache-line aligned
-
-/*
-========================
-Zone_BucketIndex
-========================
-*/
-static int Zone_BucketIndex( int size ) {
-	int index = size >> 4; // Categorize by 16-byte steps
-	if ( index >= ZONE_BUCKETS ) {
-		index = ZONE_BUCKETS - 1;
-	}
-	return index;
-}
-
-/*
-========================
-Zone_LinkFree
-========================
-*/
-static void Zone_LinkFree( zoneBlock_t *block ) {
-	int index = Zone_BucketIndex( block->size );
-	
-	block->isFree = qtrue;
-	block->nextFree = zoneBuckets[index];
-	block->prevFree = NULL;
-	
-	if ( zoneBuckets[index] ) {
-		zoneBuckets[index]->prevFree = block;
-	}
-	zoneBuckets[index] = block;
-}
-
-/*
-========================
-Zone_UnlinkFree
-========================
-*/
-static void Zone_UnlinkFree( zoneBlock_t *block ) {
-	int index = Zone_BucketIndex( block->size );
-	
-	block->isFree = qfalse;
-	
-	if ( block->nextFree ) {
-		block->nextFree->prevFree = block->prevFree;
-	}
-	if ( block->prevFree ) {
-		block->prevFree->nextFree = block->nextFree;
-	} else {
-		zoneBuckets[index] = block->nextFree;
-	}
-}
-
-/*
-========================
-Zone_IsManagedPointer
-========================
-*/
-static qboolean Zone_IsManagedPointer( void *ptr ) {
-	zoneSegment_t *seg;
-	byte *p = (byte *)ptr;
-
-	// O(N) traversal through active 2MB pages (extremely quick lookup)
-	for ( seg = zoneSegments; seg; seg = seg->next ) {
-		if ( p >= (byte *)seg && p < (byte *)seg + seg->size ) {
-			return qtrue;
-		}
-	}
-	return qfalse;
-}
-
-/*
-========================
-Zone_AllocSegment
-========================
-*/
-static void Zone_AllocSegment( int minimumSize ) {
-	int size = ZONE_SEGMENT_SIZE;
-	int segmentHeaderSize;
-	zoneSegment_t *seg;
-	zoneBlock_t *block;
-	
-	segmentHeaderSize = (sizeof(zoneSegment_t) + (ZONE_ALIGNMENT - 1)) & ~(ZONE_ALIGNMENT - 1);
-
-	if ( minimumSize > size - segmentHeaderSize - ZONE_HEADER_SIZE ) {
-		size = minimumSize + segmentHeaderSize + ZONE_HEADER_SIZE + ZONE_REDZONE_SIZE + 64;
-	}
-	
-	// Request cache-aligned page from the Operating System
-#ifdef _WIN32
-	seg = (zoneSegment_t *)_aligned_malloc( size, ZONE_ALIGNMENT );
-#else
-	if ( posix_memalign( (void **)&seg, ZONE_ALIGNMENT, size ) != 0 ) {
-		seg = NULL;
-	}
-#endif
-
-	if ( !seg ) {
-		Com_Error( ERR_FATAL, "Zone_AllocSegment: OS kernel rejected allocation of %i bytes", size );
-	}
-	
-	seg->size = size;
-	seg->next = zoneSegments;
-	zoneSegments = seg;
-	s_zoneTotal += size;
-	
-	// Anchor the master block inside the segment payload
-	block = (zoneBlock_t *)( (byte *)seg + segmentHeaderSize );
-	block->magic = ZONE_MAGIC;
-	block->size = size - segmentHeaderSize;
-	block->next = NULL;
-	block->prev = NULL;
-	
-	Zone_LinkFree( block );
-}
-
-#endif // USE_MULTI_SEGMENT
 
 /*
 ========================
@@ -1034,74 +877,12 @@ Z_Free
 ========================
 */
 void Z_Free( void *ptr ) {
-	zoneBlock_t *block;
-	byte *canaryCheck;
-	int i;
-
 	if ( !ptr ) {
 		return;
 	}
 
-#ifdef USE_MULTI_SEGMENT
-	ZONE_LOCK( &g_zoneSpinlock );
-
-	// Hybrid Check: If this pointer wasn't created by our sub-allocator, route it to system free()
-	if ( !Zone_IsManagedPointer( ptr ) ) {
-		ZONE_UNLOCK( &g_zoneSpinlock );
-		free( ptr );
-		return;
-	}
-
-	block = (zoneBlock_t *)( (byte *)ptr - ZONE_HEADER_SIZE );
-	
-	// Validation Guard 1: Magic Key Assurance
-	if ( block->magic != ZONE_MAGIC ) {
-		ZONE_UNLOCK( &g_zoneSpinlock );
-		Com_Error( ERR_FATAL, "Z_Free: Structural Corruption! Block magic modified mid-lifecycle." );
-	}
-	
-	if ( block->isFree ) {
-		ZONE_UNLOCK( &g_zoneSpinlock );
-		return; // Silently absorb double-free calls from unpatched scripts
-	}
-
-	// Validation Guard 2: Canary Buffer Overflow Check
-	canaryCheck = (byte *)ptr + ( block->size - ZONE_HEADER_SIZE - ZONE_REDZONE_SIZE );
-	for ( i = 0; i < ZONE_REDZONE_SIZE; i++ ) {
-		if ( canaryCheck[i] != ( (ZONE_CANARY_PATTERN >> ( (i & 3) * 8 )) & 0xFF ) ) {
-			ZONE_UNLOCK( &g_zoneSpinlock );
-			Com_Error( ERR_FATAL, "Z_Free: Buffer Overflow Detected! Redzone canary footprint crushed at %p", ptr );
-		}
-	}
-
-	// Active Memory Poisoning: Clean out old states to trap Use-After-Free bugs
-	Com_Memset( ptr, ZONE_POISON_PATTERN, block->size - ZONE_HEADER_SIZE - ZONE_REDZONE_SIZE );
-
-	// Consolidation: Merge forward physical blocks
-	if ( block->next && block->next->isFree ) {
-		zoneBlock_t *nextPhys = block->next;
-		Zone_UnlinkFree( nextPhys );
-		block->size += nextPhys->size;
-		block->next = nextPhys->next;
-		if ( nextPhys->next ) {
-			nextPhys->next->prev = block;
-		}
-	}
-
-	// Consolidation: Merge backward physical blocks
-	if ( block->prev && block->prev->isFree ) {
-		zoneBlock_t *prevPhys = block->prev;
-		Zone_UnlinkFree( prevPhys );
-		prevPhys->size += block->size;
-		prevPhys->next = block->next;
-		if ( block->next ) {
-			block->next->prev = prevPhys;
-		}
-		block = prevPhys; 
-	}
-
-	Zone_LinkFree( block );
-	ZONE_UNLOCK( &g_zoneSpinlock );
+#ifdef USE_MIMALLOC_ZONE
+	mi_free( ptr );
 #else
 	free( ptr );
 #endif
@@ -1114,90 +895,27 @@ Z_Malloc
 */
 void *Z_Malloc( int size ) {
 	void *rawResult = NULL;
-#ifdef USE_MULTI_SEGMENT
-	int requestedSize = size;
-	int totalNeededSize;
-	int bucketStart;
-	int i;
-	zoneBlock_t *block = NULL;
-	byte *canaryTarget;
 
 	if ( size <= 0 ) {
 		Com_Error( ERR_FATAL, "Z_Malloc: Allocation bounds error with size %i", size );
 	}
 
-	// Compute aligned allocation boundaries
-	totalNeededSize = ZONE_HEADER_SIZE + size + ZONE_REDZONE_SIZE;
-	totalNeededSize = ( totalNeededSize + (ZONE_ALIGNMENT - 1) ) & ~(ZONE_ALIGNMENT - 1);
-
-	ZONE_LOCK( &g_zoneSpinlock );
-
-	bucketStart = Zone_BucketIndex( totalNeededSize );
-	
-	for ( i = bucketStart; i < ZONE_BUCKETS; i++ ) {
-		for ( block = zoneBuckets[i]; block; block = block->nextFree ) {
-			if ( block->size >= totalNeededSize ) {
-				break;
-			}
-		}
-		if ( block ) {
-			break;
-		}
+#ifdef USE_MIMALLOC_ZONE
+	rawResult = mi_malloc( size );
+	if ( !rawResult ) {
+		Com_Error( ERR_FATAL, "Z_Malloc: Allocation bounds error for %i bytes", size );
 	}
-
-	if ( !block ) {
-		Zone_AllocSegment( totalNeededSize );
-		// Query the maximum bucket index where the newly added segment resides
-		block = zoneBuckets[ZONE_BUCKETS - 1];
-		while ( block && block->size < totalNeededSize ) {
-			block = block->nextFree;
-		}
-		if ( !block ) {
-			ZONE_UNLOCK( &g_zoneSpinlock );
-			Com_Error( ERR_FATAL, "Z_Malloc: Critical system block routing failure." );
-		}
-	}
-
-	Zone_UnlinkFree( block );
-
-	// Fragment Splitting: Subdivide heavily oversized blocks to recycle space
-	if ( block->size - totalNeededSize >= ZONE_HEADER_SIZE + 64 ) {
-		zoneBlock_t *remainder = (zoneBlock_t *)( (byte *)block + totalNeededSize );
-		remainder->magic = ZONE_MAGIC;
-		remainder->size = block->size - totalNeededSize;
-		remainder->isFree = qfalse;
-		remainder->next = block->next;
-		remainder->prev = block;
-		
-		if ( block->next ) {
-			block->next->prev = remainder;
-		}
-		block->next = remainder;
-		block->size = totalNeededSize;
-		
-		Zone_LinkFree( remainder );
-	}
-
-	rawResult = (void *)( (byte *)block + ZONE_HEADER_SIZE );
-
-	// Load the canary tracking bits into our redzone boundary
-	canaryTarget = (byte *)rawResult + ( block->size - ZONE_HEADER_SIZE - ZONE_REDZONE_SIZE );
-	for ( i = 0; i < ZONE_REDZONE_SIZE; i++ ) {
-		canaryTarget[i] = ( (ZONE_CANARY_PATTERN >> ( (i & 3) * 8 )) & 0xFF );
-	}
-
-	Com_Memset( rawResult, 0, requestedSize );
-
-	ZONE_UNLOCK( &g_zoneSpinlock );
-	return rawResult;
+	s_zoneTotal += size;
+	Com_Memset( rawResult, 0, size );
 #else
 	rawResult = malloc( size );
 	if ( !rawResult ) {
 		Com_Error( ERR_FATAL, "Z_Malloc: Allocation bounds error for %i bytes", size );
 	}
 	Com_Memset( rawResult, 0, size );
-	return rawResult;
 #endif
+
+	return rawResult;
 }
 
 
@@ -1381,6 +1099,17 @@ void Com_Meminfo_f( void ) {
 	ZONE_UNLOCK( &g_hunkSpinlock );
 #endif
 }
+
+#ifdef USE_MIMALLOC_ZONE
+/*
+=================
+Com_MimallocStats_f
+=================
+*/
+static void Com_MimallocStats_f( void ) {
+	mi_stats_print(NULL); // print to stderr by default
+}
+#endif
 
 /*
 ===============
@@ -2938,6 +2667,9 @@ void Com_Init( char *commandLine ) {
 	Cmd_AddCommand ("writeconfig", Com_WriteConfig_f );
 	Cmd_SetCommandCompletionFunc( "writeconfig", Cmd_CompleteCfgName );
 	Cmd_AddCommand("game_restart", Com_GameRestart_f);
+#ifdef USE_MIMALLOC_ZONE
+	Cmd_AddCommand("mi_stats", Com_MimallocStats_f);
+#endif
 
 	Com_ExecuteCfg();
 

@@ -348,6 +348,21 @@ This repository is a modernized, high-performance fork of the Return to Castle W
 
 ---
 
+### ⚡ Low-Latency Memory Management & Allocator Overhaul (`mimalloc`)
+
+* **Direct mimalloc Integration**
+  Completely replaced the legacy custom multi-segment zone sub-allocator (`Z_Malloc` and `Z_Free` in `common.c`) with a direct mapping to **Microsoft mimalloc**. This eliminates double-allocation layers and mitigates memory-management execution overhead.
+* **Eager Page Commits**
+  Configured memory segments to commit eagerly (`mi_option_eager_commit`) to physical RAM upon request, eliminating runtime micro-stutters and frame hitches when dynamic assets are loaded during high-action scenes.
+* **Large OS Pages**
+  Enforces 2MB huge page allocation targets (`mi_option_large_os_pages`) on compatible Linux and Windows kernels to dramatically minimize CPU Translation Lookaside Buffer (TLB) cache misses.
+* **Lock-Free Thread Safety**
+  Removed legacy spinlocks from engine memory pools. Multi-threaded worker tasks and job systems compile down to lock-free allocation paths using mimalloc's internal thread-local heap cache structures.
+* **Diagnostic Telemetry**
+  Introduced the `/mi_stats` console command, exposing low-level allocator pool metrics, active blocks, and fragmentation reports live inside the developer console.
+
+---
+
 ## UI, Gameplay Systems, & Dev Infrastructure
 
 * **"Sofia" Advanced Settings Menu**
