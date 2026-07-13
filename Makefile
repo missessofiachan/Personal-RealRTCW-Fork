@@ -322,10 +322,10 @@ BLIBDIR=$(MOUNT_DIR)/botlib
 NDIR=$(MOUNT_DIR)/null
 UIDIR=$(MOUNT_DIR)/ui
 JPDIR=$(MOUNT_DIR)/jpeg-8c
-OGGDIR=$(MOUNT_DIR)/libogg-1.3.3
-VORBISDIR=$(MOUNT_DIR)/libvorbis-1.3.6
-OPUSDIR=$(MOUNT_DIR)/opus-1.2.1
-OPUSFILEDIR=$(MOUNT_DIR)/opusfile-0.9
+OGGDIR=$(MOUNT_DIR)/libogg-1.3.5
+VORBISDIR=$(MOUNT_DIR)/libvorbis-1.3.7
+OPUSDIR=$(MOUNT_DIR)/opus-1.5.2
+OPUSFILEDIR=$(MOUNT_DIR)/opusfile-0.12
 ZDIR=$(MOUNT_DIR)/zlib-1.3.2
 FTDIR=$(MOUNT_DIR)/freetype-2.9
 SPLDIR=$(MOUNT_DIR)/splines
@@ -2237,6 +2237,8 @@ Q3OBJ += \
   $(B)/client/opus/analysis.o \
   $(B)/client/opus/mlp.o \
   $(B)/client/opus/mlp_data.o \
+  $(B)/client/opus/extensions.o \
+  $(B)/client/opus/mapping_matrix.o \
   \
   $(B)/client/opus/bands.o \
   $(B)/client/opus/celt.o \
