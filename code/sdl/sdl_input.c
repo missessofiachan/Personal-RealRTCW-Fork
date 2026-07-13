@@ -59,6 +59,10 @@ static int in_eventTime = 0;
 
 static SDL_Window *SDL_window = NULL;
 
+static float in_mouseAccumX = 0.0f;
+static float in_mouseAccumY = 0.0f;
+static cvar_t *in_subTickMouse = NULL;
+
 #define CTRL(a) ((a)-'a'+1)
 
 /*
@@ -398,6 +402,9 @@ static void IN_DeactivateMouse( qboolean isFullscreen )
 		IN_GobbleMotionEvents( );
 
 		SDL_SetWindowRelativeMouseMode( SDL_window, false );
+
+		in_mouseAccumX = 0.0f;
+		in_mouseAccumY = 0.0f;
 
 		// Don't warp the mouse unless the cursor is within the window
 		if( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_MOUSE_FOCUS )
@@ -1086,9 +1093,19 @@ static void IN_ProcessEvents( void )
 			case SDL_EVENT_MOUSE_MOTION :
 				if( mouseActive )
 				{
-					if( !e.motion.xrel && !e.motion.yrel )
-						break;
-					Com_QueueEvent( in_eventTime, SE_MOUSE, e.motion.xrel, e.motion.yrel, 0, NULL );
+					if ( in_subTickMouse && in_subTickMouse->integer &&
+					     Key_GetCatcher() == 0 &&
+					     !Cvar_VariableIntegerValue("cg_weaponWheelActive") )
+					{
+						in_mouseAccumX += e.motion.xrel;
+						in_mouseAccumY += e.motion.yrel;
+					}
+					else
+					{
+						if( !e.motion.xrel && !e.motion.yrel )
+							break;
+						Com_QueueEvent( in_eventTime, SE_MOUSE, (int)e.motion.xrel, (int)e.motion.yrel, 0, NULL );
+					}
 				}
 				break;
 
@@ -1256,6 +1273,8 @@ void IN_Init( void *windowData )
 
 	in_keyboardDebug = Cvar_Get( "in_keyboardDebug", "0", CVAR_ARCHIVE );
 
+	in_subTickMouse = Cvar_Get( "in_subTickMouse", "1", CVAR_ARCHIVE );
+
 	// mouse variables
 	in_mouse = Cvar_Get( "in_mouse", "1", CVAR_ARCHIVE );
 	in_nograb = Cvar_Get( "in_nograb", "0", CVAR_ARCHIVE );
@@ -1303,3 +1322,20 @@ void IN_Restart( void )
 	IN_ShutdownJoystick( );
 	IN_Init( SDL_window );
 }
+
+/*
+===============
+IN_GetAndClearMouseAccum
+
+Harvest the SDL3 sub-tick float mouse deltas accumulated since the last
+game tick. Called once per tick from CL_MouseMove.
+===============
+*/
+void IN_GetAndClearMouseAccum( float *outX, float *outY )
+{
+	*outX = in_mouseAccumX;
+	*outY = in_mouseAccumY;
+	in_mouseAccumX = 0.0f;
+	in_mouseAccumY = 0.0f;
+}
+

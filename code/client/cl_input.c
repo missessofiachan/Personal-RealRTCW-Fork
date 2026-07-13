@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 // cl.input.c  -- builds an intended movement command to send to the server
 
 #include "client.h"
+#include "../sys/sys_local.h"
 
 unsigned frame_msec;
 int old_com_frameTime;
@@ -1014,18 +1015,39 @@ CL_MouseMove
 */
 void CL_MouseMove(usercmd_t *cmd) {
 	float mx, my;
+	cvar_t *in_subTickMouse = Cvar_Get("in_subTickMouse", "1", CVAR_ARCHIVE);
 
-	// allow mouse smoothing
-	if ( m_filter->integer ) {
-		mx = ( cl.mouseDx[0] + cl.mouseDx[1] ) * 0.5f;
-		my = ( cl.mouseDy[0] + cl.mouseDy[1] ) * 0.5f;
+	if ( in_subTickMouse && in_subTickMouse->integer ) {
+		float rawX, rawY;
+		IN_GetAndClearMouseAccum( &rawX, &rawY );
+
+		if ( rawX != 0.0f || rawY != 0.0f ) {
+			s_lastMouseInputTime = Sys_Milliseconds();
+		}
+
+		if ( m_filter->integer ) {
+			static float prevX = 0.0f, prevY = 0.0f;
+			mx = ( rawX + prevX ) * 0.5f;
+			my = ( rawY + prevY ) * 0.5f;
+			prevX = rawX;
+			prevY = rawY;
+		} else {
+			mx = rawX;
+			my = rawY;
+		}
 	} else {
-		mx = cl.mouseDx[cl.mouseIndex];
-		my = cl.mouseDy[cl.mouseIndex];
+		// allow mouse smoothing
+		if ( m_filter->integer ) {
+			mx = ( cl.mouseDx[0] + cl.mouseDx[1] ) * 0.5f;
+			my = ( cl.mouseDy[0] + cl.mouseDy[1] ) * 0.5f;
+		} else {
+			mx = cl.mouseDx[cl.mouseIndex];
+			my = cl.mouseDy[cl.mouseIndex];
+		}
+		cl.mouseIndex ^= 1;
+		cl.mouseDx[cl.mouseIndex] = 0;
+		cl.mouseDy[cl.mouseIndex] = 0;
 	}
-	cl.mouseIndex ^= 1;
-	cl.mouseDx[cl.mouseIndex] = 0;
-	cl.mouseDy[cl.mouseIndex] = 0;
 
 	if (mx == 0.0f && my == 0.0f)
 		return;

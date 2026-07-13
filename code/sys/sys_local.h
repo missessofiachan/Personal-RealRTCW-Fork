@@ -60,3 +60,6 @@ void Sys_AnsiColorPrint( const char *msg );
 
 int Sys_PID( void );
 qboolean Sys_PIDIsRunning( int pid );
+
+void IN_GetAndClearMouseAccum( float *outX, float *outY );
+

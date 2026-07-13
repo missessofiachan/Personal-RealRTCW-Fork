@@ -72,6 +72,11 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Inlined LOD Calculations**: Replaces indirect function calls in `R_ComputeLOD` with direct inline calculations, eliminating call stack overhead when processing complex mesh details.
 * **User Command Optimizations**: Streamlines view-angle calculations and command processing (`usercmd_t`), minimizing input latency for high-polling-rate mice and gamepads.
 
+### 🖱️ Native SDL3 Raw Input & Sub-Tick Mouse Accumulation (`sdl_input.c` / `cl_input.c`)
+* **Sub-Tick Floating-Point Accumulation**: Decouples mouse motion from the engine's `com_maxfps` server tick rates by accumulating raw `float` relative movements directly within the SDL3 event loop. This prevents sub-pixel truncation and eliminates camera judder for high-polling-rate mice at lower frame rate caps.
+* **Context-Aware Input Filtering**: Intelligently switches between high-precision float accumulation in-game and standard integer event queuing when UI menus, console, or the weapon wheel are active, ensuring seamless cursor navigation.
+* **Cvar Toggle Option**: Includes the `in_subTickMouse` (default `1`) console variable to dynamically toggle between sub-tick float accumulation and the legacy double-buffered integer path for comparison or debugging.
+
 ### 🤖 Bot Intelligence Optimization (`ai_main.c` / `g_bot.c` / `ai_cast_sight.c`)
 * **Fast Bot Pathing & Vectorized Transforms**: Uses hardware-native rounding (`roundf`) for fast angle wrapping in navigation meshes alongside SSE unaligned loads/stores (`_mm_loadu_ps` / `_mm_storeu_ps`) to copy 3D transform structures in single operations.
 * **Vector Dot Product FOV Check**: Replaces nested conditional loops and expensive `AngleMod` calculations in visibility checks with a 3D vector dot product, bypassing multiple trigonometric conversions per sight check.
