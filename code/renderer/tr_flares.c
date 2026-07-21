@@ -144,65 +144,56 @@ RB_AddFlare
 This is called at surface tesselation time
 ==================
 */
-void RB_AddFlare( void *surface, int fogNum, vec3_t point, vec3_t color, float scale, vec3_t normal, int id, int flags ) {  //----(SA)	added scale. added id.  added visible
-	int i;
-	flare_t         *f;
-	vec3_t local;
-	float d = 1;
-	vec4_t eye, clip, normalized, window;
+void RB_AddFlare( void *surface, int fogNum, vec3_t point, vec3_t color, float scale, vec3_t normal, int id, int flags ) {
+	int      i;
+	flare_t  *f;
+	vec3_t   local;
+	float    d = 1.0f;
+	vec4_t   eye, clip, normalized, window;
 
 	backEnd.pc.c_flareAdds++;
 
-	if(normal && (normal[0] || normal[1] || normal[2]))
-	{
+	// Perform backface culling early before executing transformation matrices
+	if ( normal && ( normal[0] != 0.0f || normal[1] != 0.0f || normal[2] != 0.0f ) ) {
 		VectorSubtract( backEnd.viewParms.or.origin, point, local );
-		VectorNormalizeFast(local);
-		d = DotProduct(local, normal);
+		VectorNormalizeFast( local );
+		d = DotProduct( local, normal );
 
-		// If the viewer is behind the flare don't add it.
-		if(d < 0)
-			return;
-	}
-
-	// if the point is off the screen, don't bother adding it
-	// calculate screen coordinates and depth
-	R_TransformModelToClip( point, backEnd.or.modelMatrix,
-							backEnd.viewParms.projectionMatrix, eye, clip );
-
-	//ri.Printf(PRINT_ALL, "src:  %f  %f  %f  \n", point[0], point[1], point[2]);
-	//ri.Printf(PRINT_ALL, "eye:  %f  %f  %f  %f\n", eye[0], eye[1], eye[2], eye[3]);
-
-	// check to see if the point is completely off screen
-	for ( i = 0 ; i < 3 ; i++ ) {
-		if ( clip[i] >= clip[3] || clip[i] <= -clip[3] ) {
+		// If the viewer is behind the flare, don't add it
+		if ( d < 0.0f ) {
 			return;
 		}
 	}
 
-	R_TransformClipToWindow( clip, &backEnd.viewParms, normalized, window );
+	// Calculate screen coordinates and depth
+	R_TransformModelToClip( point, backEnd.or.modelMatrix,
+							backEnd.viewParms.projectionMatrix, eye, clip );
 
-	//ri.Printf(PRINT_ALL, "window:  %f  %f  %f  \n", window[0], window[1], window[2]);
-
-	if ( window[0] < 0 || window[0] >= backEnd.viewParms.viewportWidth
-		 || window[1] < 0 || window[1] >= backEnd.viewParms.viewportHeight ) {
-		return; // shouldn't happen, since we check the clip[] above, except for FP rounding
+	// Unrolled off-screen frustum clip check
+	if ( clip[0] >= clip[3] || clip[0] <= -clip[3] ||
+		 clip[1] >= clip[3] || clip[1] <= -clip[3] ||
+		 clip[2] >= clip[3] || clip[2] <= -clip[3] ) {
+		return;
 	}
 
-	// see if a flare with a matching surface, scene, and view exists
-	for ( f = r_activeFlares ; f ; f = f->next ) {
-//		if ( f->surface == surface && f->frameSceneNum == backEnd.viewParms.frameSceneNum && f->inPortal == backEnd.viewParms.isPortal ) {
+	R_TransformClipToWindow( clip, &backEnd.viewParms, normalized, window );
 
-		// (SA) added back in more checks for different scenes
+	if ( window[0] < 0.0f || window[0] >= backEnd.viewParms.viewportWidth ||
+		 window[1] < 0.0f || window[1] >= backEnd.viewParms.viewportHeight ) {
+		return; // Shouldn't happen except for FP rounding
+	}
+
+	// See if a flare with a matching id, scene, and view exists
+	for ( f = r_activeFlares ; f ; f = f->next ) {
 		if ( f->id == id && f->frameSceneNum == backEnd.viewParms.frameSceneNum && f->inPortal == backEnd.viewParms.isPortal ) {
 			break;
 		}
 	}
 
-	// allocate a new one
+	// Allocate a new flare if matching state was not found
 	if ( !f ) {
 		if ( !r_inactiveFlares ) {
-			// the list is completely full
-			return;
+			return; // List is completely full
 		}
 		f = r_inactiveFlares;
 		r_inactiveFlares = r_inactiveFlares->next;
@@ -226,18 +217,17 @@ void RB_AddFlare( void *surface, int fogNum, vec3_t point, vec3_t color, float s
 	f->addedFrame = backEnd.viewParms.frameCount;
 	f->fogNum = fogNum;
 
-	VectorCopy(point, f->origin);
+	VectorCopy( point, f->origin );
 	VectorCopy( color, f->color );
 
-	f->scale = scale;   //----(SA)
+	f->scale = scale;
 
-	// fade the intensity of the flare down as the
-	// light surface turns away from the viewer
+	// Fade intensity down as the light surface turns away from viewer
 	VectorScale( f->color, d, f->color );
 
-	// save info needed to test
-	f->windowX = backEnd.viewParms.viewportX + window[0];
-	f->windowY = backEnd.viewParms.viewportY + window[1];
+	// Save info needed to test Z buffer
+	f->windowX = backEnd.viewParms.viewportX + (int)window[0];
+	f->windowY = backEnd.viewParms.viewportY + (int)window[1];
 
 	f->eyeZ = eye[2];
 }
