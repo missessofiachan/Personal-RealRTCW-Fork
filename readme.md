@@ -7,10 +7,10 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 ## 🛠️ Architectural Overview
 
 | Module | Focus Area | Key Technologies & Core Files |
-| :--- | :--- | :--- |
+| --- | --- | --- |
 | **Virtual Filesystem** | VFS Performance & I/O Reduction | `files.c`, AVX2, Directory Caching, Tokenized Filtering |
 | **Collision & Maps** | Physics Hulls & Spatial Queries | `cm_load.c`, `cm_trace.c`, Branchless Box Optimization |
-| **Multithreading** | Parallelization & Job Dispatching | `gp_jobsystem`, Skeletal Skinning, Async Audio Codecs |
+| **Multithreading** | Parallelization & Job Dispatching | `gp_jobsystem`, Work Stealing, Batched Submissions, Skeletal Skinning |
 | **Audio Pipeline** | Spatial Audio & Reverb Simulation | OpenAL EFX, EAX, 128-bit SSE Audio Mixer |
 | **Renderer & Shading** | Cinematic Visuals & Tech Modernization | Z-Fail (Carmack's Reverse), Pseudo-Soft Shadows, PBR Attenuation, Flare Precomputation |
 | **QVM Compiler** | Execution Performance & Security | `vm_x86.c`, `vm.c`, x86_64 JIT, W^X Memory Hardening |
@@ -21,6 +21,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 ## ⚡ Performance & Architectural Improvements
 
 ### 📦 Virtual Filesystem (VFS) & Zip Traversal (`files.c`)
+
 * **PK3 Directory Caching (`pk3cache.dat`)**: Caches ZIP/PK3 directory scans in a binary file validated by size and timestamp. This bypasses minizip traversal on startup, dramatically slashing game boot times and eliminating cold-start delays.
 * **Intelligent Stream Seeking**: Overhauls zlib stream seeking to jump forward using absolute offsets in the decompression window, improving background asset streaming responsiveness while reducing CPU load.
 * **Expanded File Hash Table**: Increased `MAX_FILEHASH_SIZE` from 1,024 to 32,768, scaling up lookups to near $O(1)$ efficiency under heavy mod loads to eradicate micro-stutters.
@@ -30,11 +31,17 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Increased File Tracking Limits**: Raised the `MAX_FOUND_FILES` limit to allow the tracker to index thousands of custom assets simultaneously, preventing crashes on massive total-conversion mods.
 
 ### 📐 Collision Model & Map Loading (`cm_load.c` / `cm_trace.c`)
+
 * **RAM-Based Map Caching**: Retains decompressed map collision hulls and geometry in system memory, making level loads and quickloads near-instantaneous by bypassing disk extraction.
 * **Branchless Box Collision Math**: Redesigns spatial ray-intersection checks inside bounding box clipping tasks using branchless vector min/max selections, preventing CPU instruction pipeline stalls from branch mispredictions.
 * **Model Bounds Loading Fix**: Corrected the modelbounds parsing logic on world asset clip layers, ensuring projectile hitboxes align perfectly with physics shapes at all angles.
 
 ### 🧵 Multi-Threaded Architecture & Parallelization (`gp_jobsystem`)
+
+* **Main-Thread Work Stealing (`Sys_WaitJobs`)**: Eliminates main-thread idle stalls during wait barriers by having the main engine thread actively steal and execute remaining queue jobs instead of sleeping on OS condition variables.
+* **Micro-Spin Waiting & Thread Prioritization**: Configures worker threads with `SDL_THREAD_PRIORITY_HIGH` and lightweight spin-wait loops prior to committing to OS kernel sleeps (`SDL_WaitCondition`), cutting context-switch wakeup overhead for micro-jobs down to near zero.
+* **Power-of-Two Ring Buffer & Bitwise Masking**: Expanded job queue capacity to 2,048 entries using bitwise AND masking (`JOB_MASK`), replacing hardware integer division modulo operations (`% MAX_JOBS`) to maximize enqueue/dequeue throughput.
+* **Batched Job Submissions (`Sys_QueueJobBatch`)**: Enables bulk job dispatches under a single lock acquisition, reducing thread mutex lock contention from $O(N)$ down to $O(1)$ while signaling background workers in batches.
 * **Parallel PVS Leaf Visibility Testing (`tr_world.c`)**: Multi-threads potential visibility set (PVS) leaf node array checks across job system workers during scene construction (`R_MarkLeaves`).
 * **Parallel Brush Model Dynamic Light Culling (`tr_light.c`)**: Partitions dynamic light plane equations across non-overlapping surface chunks for complex brush models (`R_DlightBmodel`).
 * **VM Engine-Game Syscall Extensions (`g_public.h` / `cg_syscalls.asm` / `g_syscalls.asm`)**: Exposes job system queuing (`trap_Sys_QueueJob`, `trap_Sys_WaitJobs`) across native and QVM module boundaries with aligned syscall assembly equates.
@@ -43,6 +50,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Asynchronous Background Asset Loading (`snd_openal.c` / `snd_codec.c`)**: Offloads file loading and WAV/OGG/Opus decompression tasks to worker threads using a thread-safe custom allocator (`S_CodecAllocateTemp`).
 
 ### 🔊 Dynamic Spatial Audio & Environmental Reverb (OpenAL EFX / EAX)
+
 * **Dynamic Ray-Traced Reverb**: Casts geometric rays into the map to calculate room volume, outdoor exposure, and structural boundaries to dynamically adjust OpenAL EFX reverb parameters on the fly.
 * **OpenAL EFX Occlusion**: Applies low-pass filters to sound sources when line-of-sight is blocked, realistically simulating acoustic muffling behind walls, doors, or solid geometry.
 * **HRTF Support**: Exposes full Head-Related Transfer Function configurations directly in the UI, delivering precise binaural 3D spatial audio on headphones.
@@ -50,6 +58,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **SIMD Audio Mixer**: Employs 128-bit SSE lanes and saturation packing (`_mm_packs_epi32`) to mix up to 4 stereo streams in parallel without branching, completely eliminating audio cracking.
 
 ### 💡 Cinematic Rendering & Lighting Pipeline (`tr_shadows.c` / `tr_light.c` / `tr_bloom.c` / `tr_flares.c`)
+
 * **Carmack's Reverse (Z-Fail Stencil Shadows)**: Switched the volumetric shadow rendering pipeline from Z-Pass to Z-Fail culling to prevent the entire screen from glitching when the camera clips inside a shadow volume.
 * **Volumetric Contact Hardening (Pseudo-Soft Shadows)**: Injects a high-frequency, vertex-indexed dither pattern into the light extrusion vectors, creating realistic light penumbras that blur naturally over distance.
 * **Cinematic Ambient Shadow Blending**: Replaces the hardcoded multiplicative gray blend with an alpha-blended, slate-blue tinted shadow pass, allowing shadows to absorb environmental ambient colors.
@@ -63,6 +72,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Precomputed Flare Falloff & Fast Bounds Culling (`tr_flares.c`)**: Precomputes intensity falloff square roots globally upon CVAR updates to eliminate runtime per-flare `sqrtf()` calls, early-culls back-facing flare normals prior to clip transformations, unrolls 3D fog volume bounds queries, and pre-calculates quad vertex attributes.
 
 ### 🖼️ Modernized Backend Renderer & Geometry Streaming (`tr_surface.c`)
+
 * **Immediate Mode Eradication (`RB_SurfaceBeam` / `RB_SurfaceAxis`)**: Stripped all legacy fixed-function immediate mode paths (`qglBegin`/`qglEnd`) from procedural entities, re-routing them to stream directly into the unified engine vertex and index geometry cache buffers.
 * **Dynamic Light Pass Consolidation (`RB_SurfaceTriangles` / `RB_SurfaceFace`)**: Merged the secondary standalone bitwise masking loop (`vertexDlightBits`) directly into the main coordinate vertex allocation stride to optimize cache efficiency.
 * **Branch-Hoisted Keyframe Interpolation (`LerpCMeshVertexes`)**: Hoisted structural model compression evaluation flags completely outside high-frequency vertex processing loops, eradicating instruction pipeline stalls.
@@ -70,6 +80,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Dual-Channel Coordinate Streaming (`RB_SurfaceMesh` / `RB_SurfaceCMesh`)**: Refactored multi-stage UV texture loops to simultaneously push diffuse and lightmap properties across both coordinate streaming channels.
 
 ### 📐 Core Math & Renderer Geometry (`q_math.c` / `q_shared.h` / `tr_mesh.c`)
+
 * **SIMD Vector Normalization**: Replaces scalar vector normalizations with SSE intrinsics and reciprocal square root approximations (`_mm_rsqrt_ps`), speeding up transformation math while safeguarding routines against division-by-zero errors.
 * **Branchless Coordinate Clamping**: Replaces clamping branches with `fminf` and `fmaxf`, compiling down to single-instruction `minss`/`maxss` assembly primitives.
 * **SIMD Fog Volume Checks**: Checks mesh bounding spheres against fog volume limits in parallel using SSE masking (`_mm_movemask_ps`), eliminating calculation lag or visual pops when crossing dynamic fog boundaries.
@@ -77,11 +88,13 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **User Command Optimizations**: Streamlines view-angle calculations and command processing (`usercmd_t`), minimizing input latency for high-polling-rate mice and gamepads.
 
 ### 🖱️ Native SDL3 Raw Input & Sub-Tick Mouse Accumulation (`sdl_input.c` / `cl_input.c`)
+
 * **Sub-Tick Floating-Point Accumulation**: Decouples mouse motion from the engine's `com_maxfps` server tick rates by accumulating raw `float` relative movements directly within the SDL3 event loop. This prevents sub-pixel truncation and eliminates camera judder for high-polling-rate mice at lower frame rate caps.
 * **Context-Aware Input Filtering**: Intelligently switches between high-precision float accumulation in-game and standard integer event queuing when UI menus, console, or the weapon wheel are active, ensuring seamless cursor navigation.
 * **Cvar Toggle Option**: Includes the `in_subTickMouse` (default `1`) console variable to dynamically toggle between sub-tick float accumulation and the legacy double-buffered integer path for comparison or debugging.
 
 ### 🤖 Bot Intelligence Optimization (`ai_main.c` / `g_bot.c` / `ai_cast_sight.c`)
+
 * **Fast Bot Pathing & Vectorized Transforms**: Uses hardware-native rounding (`roundf`) for fast angle wrapping in navigation meshes alongside SSE unaligned loads/stores (`_mm_loadu_ps` / `_mm_storeu_ps`) to copy 3D transform structures in single operations.
 * **Vector Dot Product FOV Check**: Replaces nested conditional loops and expensive `AngleMod` calculations in visibility checks with a 3D vector dot product, bypassing multiple trigonometric conversions per sight check.
 * **Early-Exit PVS Check**: Runs a fast Potential Visibility Set (`trap_InPVS`) check at the start of visibility routines to instantly discard calculations for characters separated by solid world geometry.
@@ -89,6 +102,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Cached Animation Speed Lookup**: Caches movement speeds retrieved from the character animation script based on `aiState`, eradicating redundant complex animation script parsing and indexing operations per character every frame.
 
 ### ⚡ Modernized x86_64 JIT QVM Compiler (`vm_x86.c` / `vm.c`)
+
 * **Dynamic Register Caching**: Caches QVM stack variables directly in x86-64 registers (`RAX`, `RCX`, `RDX`) via `vm_optimize.h`, cutting stack memory traffic by up to 80% and accelerating virtual machine execution toward native speeds.
 * **W^X Memory Hardening**: Transitioned JIT buffer allocation to a strict Write-or-Execute model using `mprotect`, switching memory pages to `PROT_READ | PROT_EXEC` after code emission to secure the engine against dynamic code injection vulnerabilities.
 * **Instruction Merging**: Merges related VM instructions into single machine code blocks and maps floating-point ceil/floor operations directly to hardware SSE4.1 `roundss` instructions, reducing the instruction cache footprint.
@@ -100,6 +114,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 ## 🎮 UI, Gameplay Systems, & Dev Infrastructure
 
 ### ⚡ Low-Latency Memory Management (`mimalloc`)
+
 > **Architectural Shift:** The legacy custom multi-segment zone sub-allocator (`Z_Malloc` and `Z_Free` in `common.c`) has been completely replaced with a direct mapping to Microsoft `mimalloc`. This eliminates double-allocation layers and mitigates memory-management execution overhead.
 
 * **Eager Page Commits**: Configured memory segments to commit eagerly (`mi_option_eager_commit`) to physical RAM upon request, eliminating runtime micro-stutters and frame hitches when dynamic assets are loaded during high-action scenes.
@@ -108,6 +123,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Diagnostic Telemetry**: Introduced the `/mi_stats` console command, exposing low-level allocator pool metrics, active blocks, and fragmentation reports live inside the developer console.
 
 ### 🎛️ Feature Additions & Enhancements
+
 * **"Sofia" Advanced Settings Menu**: Features a custom settings tab to control HRTF, audio occlusion, reverb, and Discord options. The UI layout has been overhauled to eliminate text clipping or overlapping fields.
 * **Discord Rich Presence**: Integrates game state (active mod, weapons with dynamic emojis, score/kills) into Discord via background thread sockets without introducing gameplay micro-stutters.
 * **Tactical Flashlight**: Adds a battery-powered flashlight featuring dynamic dimming curves, standalone HUD indicators, and dedicated AI detection paths for enhanced stealth options.
