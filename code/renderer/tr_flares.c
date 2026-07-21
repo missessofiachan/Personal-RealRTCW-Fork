@@ -238,10 +238,9 @@ RB_AddDlightFlares
 ==================
 */
 void RB_AddDlightFlares( void ) {
-	dlight_t        *l;
-	int i, j, k;
-	int id = 0;
-	fog_t           *fog = NULL;
+	dlight_t *l;
+	int      i, j;
+	int      id = 0;
 
 	if ( r_flares->integer < 2 ) {
 		return;
@@ -249,34 +248,24 @@ void RB_AddDlightFlares( void ) {
 
 	l = backEnd.refdef.dlights;
 
-	if(tr.world)
-		fog = tr.world->fogs;
-
 	for ( i = 0 ; i < backEnd.refdef.num_dlights ; i++, l++ ) {
+		j = 0;
 
-		// find which fog volume the light is in
-		if(fog)
-		{
-			// find which fog volume the light is in 
+		if ( tr.world ) {
 			for ( j = 1 ; j < tr.world->numfogs ; j++ ) {
-				fog = &tr.world->fogs[j];
-				for ( k = 0 ; k < 3 ; k++ ) {
-					if ( l->origin[k] < fog->bounds[0][k] || l->origin[k] > fog->bounds[1][k] ) {
-						break;
-					}
-				}
-				if ( k == 3 ) {
-					break;
+				fog_t *fog = &tr.world->fogs[j];
+				if ( l->origin[0] >= fog->bounds[0][0] && l->origin[0] <= fog->bounds[1][0] &&
+					 l->origin[1] >= fog->bounds[0][1] && l->origin[1] <= fog->bounds[1][1] &&
+					 l->origin[2] >= fog->bounds[0][2] && l->origin[2] <= fog->bounds[1][2] ) {
+					break; // Found matching fog volume
 				}
 			}
 			if ( j == tr.world->numfogs ) {
 				j = 0;
 			}
 		}
-		else
-			j = 0;
 
-		RB_AddFlare( (void *)l, j, l->origin, l->color, 1.0f, NULL, id++, qtrue );  //----(SA)	also set scale
+		RB_AddFlare( (void *)l, j, l->origin, l->color, 1.0f, NULL, id++, qtrue );
 	}
 }
 
@@ -287,37 +276,32 @@ RB_AddCoronaFlares
 ==============
 */
 void RB_AddCoronaFlares( void ) {
-	corona_t        *cor;
-	int i, j, k;
-	fog_t           *fog;
+	corona_t *cor;
+	int      i, j;
 
 	if ( r_flares->integer != 1 && r_flares->integer != 3 ) {
 		return;
 	}
 
-	if ( !( tr.world ) ) { // (SA) possible currently at the player model selection menu
+	if ( !( tr.world ) ) {
 		return;
 	}
 
 	cor = backEnd.refdef.coronas;
 
 	for ( i = 0 ; i < backEnd.refdef.num_coronas ; i++, cor++ ) {
-
-		// find which fog volume the corona is in
 		for ( j = 1 ; j < tr.world->numfogs ; j++ ) {
-			fog = &tr.world->fogs[j];
-			for ( k = 0 ; k < 3 ; k++ ) {
-				if ( cor->origin[k] < fog->bounds[0][k] || cor->origin[k] > fog->bounds[1][k] ) {
-					break;
-				}
-			}
-			if ( k == 3 ) {
-				break;
+			fog_t *fog = &tr.world->fogs[j];
+			if ( cor->origin[0] >= fog->bounds[0][0] && cor->origin[0] <= fog->bounds[1][0] &&
+				 cor->origin[1] >= fog->bounds[0][1] && cor->origin[1] <= fog->bounds[1][1] &&
+				 cor->origin[2] >= fog->bounds[0][2] && cor->origin[2] <= fog->bounds[1][2] ) {
+				break; // Found matching fog volume
 			}
 		}
 		if ( j == tr.world->numfogs ) {
 			j = 0;
 		}
+
 		RB_AddFlare( (void *)cor, j, cor->origin, cor->color, cor->scale, NULL, cor->id, cor->flags );
 	}
 }
