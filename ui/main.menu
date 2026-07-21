@@ -2670,10 +2670,30 @@ itemDef
    		name iortcwgraphics
 		group system
     	type ITEM_TYPE_MULTI
+		text "Shadow Quality:"
+		cvar "cg_shadows"
+		cvarFloatList { "Off (Low)" 0 "Simple Blobs (Med)" 1 "Planar (High)" 3 "Stencil Volume (Ultra)" 2 }
+		rect 300 195 290 12
+      	textalign ITEM_ALIGN_RIGHT
+		textfont UI_FONT_BIG
+      	textalignx 142
+      	textaligny 10
+		textscale .22 
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07       
+      	forecolor 1 1 1 1
+      	visible 0 
+		action { uiScript glCustom }
+	}
+
+	itemDef {
+   		name iortcwgraphics
+		group system
+    	type ITEM_TYPE_MULTI
 		text "@SYSTEM_GEODETAIL"
 		cvar "r_lodbias"
 		cvarFloatList { "@SYSTEM_VERYLOWGEO" 2 "@SYSTEM_LOWGEO" 1 "@SYSTEM_MEDIUMGEO" 0 "@SYSTEM_HIGHGEO" -1 "@SYSTEM_VERYHIGHGEO" -2   }
-		rect 300 195 290 12
+		rect 300 210 290 12
       	textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
       	textalignx 142
@@ -2693,7 +2713,7 @@ itemDef
 		text "@SYSTEM_CHARTEXTURES"
 		cvar "r_picmip2"
 		cvarFloatList { "@SYSTEM_CHARLOW" 3 "@SYSTEM_CHARNORMAL" 2 "@SYSTEM_CHARHIGH" 1 "@SYSTEM_CHAREXTRA" 0 }
-		rect 300 210 290 12
+		rect 300 225 290 12
       	textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
       	textalignx 142
@@ -2714,7 +2734,7 @@ itemDef
 		textfont UI_FONT_BIG
 		cvar "r_picmip"
 		cvarFloatList { "@SYSTEM_GENTEXTURESLOW" 2 "@SYSTEM_GENTEXTURESMED" 1 "@SYSTEM_GENTEXTURESHIGH" 0 }
-		rect 300 225 290 12
+		rect 300 240 290 12
 	    textalign ITEM_ALIGN_RIGHT
       	textalignx 142
       	textaligny 10
@@ -2734,7 +2754,7 @@ itemDef
 		textfont UI_FONT_BIG
 		cvar "r_texturemode"
 		cvarStrList { "@SYSTEM_BILINEAR", "GL_LINEAR_MIPMAP_NEAREST", "@SYSTEM_TRILINEAR", "GL_LINEAR_MIPMAP_LINEAR"  }
-		rect 300 240 290 12
+		rect 300 255 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142
       	textaligny 10
@@ -2746,7 +2766,7 @@ itemDef
 		action { uiScript glCustom }
 	}
 
-itemDef {
+	itemDef {
    		name iortcwgraphics
 		group system
    		type ITEM_TYPE_MULTI
@@ -2754,7 +2774,7 @@ itemDef {
 		text "@SYSTEM_COLORDEPTH"
 		cvar "r_colorbits"
 		cvarFloatList { "@SYSTEM_DEPTHDESKTOP" 0 "@SYSTEM_16BIT" 16 "@SYSTEM_32BIT" 32 }
-		rect 300 255 290 12
+		rect 300 270 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142
       	textaligny 10
@@ -2773,7 +2793,7 @@ itemDef {
 		text "@SYSTEM_COMPRESSTEXTURES"
 		textfont UI_FONT_BIG
 		cvar "r_ext_compressed_textures"
-		rect 300 270 290 12
+		rect 300 285 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142
       	textaligny 10
@@ -2793,7 +2813,7 @@ itemDef {
 		textfont UI_FONT_BIG
 		cvar "r_texturebits"
 		cvarFloatList { "@SYSTEM_DEFAULT" 0 "@SYSTEM_16BIT " 16 "@SYSTEM_32BIT" 32 }
-		rect 300 285 290 12
+		rect 300 300 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142
       	textaligny 10
@@ -2812,7 +2832,7 @@ itemDef {
 		textfont UI_FONT_BIG
 		text "@SYSTEM_DISTANCEFOG"
 		cvar "r_ext_NV_fog_dist"
-		rect 300 300 290 12
+		rect 300 315 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142
       	textaligny 10
@@ -2831,7 +2851,7 @@ itemDef {
 		textfont UI_FONT_BIG
 		text "@SYSTEM_ANISOTROPIC"
 		cvar "r_ext_texture_filter_anisotropic"
-		rect 300 325 290 12
+		rect 300 330 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142
       	textaligny 10
@@ -2851,7 +2871,7 @@ itemDef {
       	type ITEM_TYPE_SLIDER
 		text "@SYSTEM_MAXANISOTROPY"
 		cvarfloat "r_ext_max_anisotropy" 0 0 16
-		rect 300 340 290 12
+		rect 300 345 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142 
       	textaligny 10
@@ -2871,7 +2891,7 @@ itemDef {
       	type ITEM_TYPE_SLIDER
 		text "@SYSTEM_MULTISAMPLE"
 		cvarfloat "r_ext_multisample" 0 0 4
-		rect 300 355 290 12
+		rect 300 360 290 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 142 
       	textaligny 10

@@ -3455,10 +3455,26 @@ static void CreateInternalShaders( void ) {
 	Q_strncpyz( shader.name, "<stencil shadow>", sizeof( shader.name ) );
 	shader.sort = SS_STENCIL_SHADOW;
 	tr.shadowShader = FinishShader();
+
+	// projection shadow shader built-in fallback
+	InitShader( "projectionShadow", LIGHTMAP_NONE );
+	stages[0].bundle[0].image[0] = tr.whiteImage;
+	stages[0].active = qtrue;
+	stages[0].stateBits = GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+	stages[0].constantColor[0] = 0;
+	stages[0].constantColor[1] = 0;
+	stages[0].constantColor[2] = 0;
+	stages[0].constantColor[3] = 128;
+	stages[0].rgbGen = CGEN_CONST;
+	stages[0].alphaGen = AGEN_CONST;
+	shader.deforms[0].deformation = DEFORM_PROJECTION_SHADOW;
+	shader.numDeforms = 1;
+	shader.polygonOffset = qtrue; // prevent Z-fighting with the floor
+	tr.projectionShadowShader = FinishShader();
 }
 
 static void CreateExternalShaders( void ) {
-//	tr.projectionShadowShader = R_FindShader( "projectionShadow", LIGHTMAP_NONE, qtrue );
+	tr.projectionShadowShader = R_FindShader( "projectionShadow", LIGHTMAP_NONE, qtrue );
 	tr.flareShader = R_FindShader( "flareShader", LIGHTMAP_NONE, qtrue );
 
 	// Hack to make fogging work correctly on flares. Fog colors are calculated

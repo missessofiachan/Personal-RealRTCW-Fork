@@ -672,6 +672,9 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		depthBits = r_depthbits->value;
 
 	stencilBits = r_stencilbits->value;
+	if ( ( r_shadows->integer == 2 || r_stencilbits->integer > 0 ) && stencilBits < 8 ) {
+		stencilBits = 8;
+	}
 	samples = r_ext_multisample->value;
 
 	for (i = 0; i < 16; i++)

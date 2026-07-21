@@ -4542,16 +4542,14 @@ void CG_Player( centity_t *cent ) {
 	// add a water splash if partially in and out of water
 	CG_PlayerSplash( cent );
 
+	// calculate player ground shadow plane before building refEntities
+	shadow = CG_PlayerShadow( cent, &shadowPlane );
+
 	// get the player model information
 	renderfx = 0;
 	if ( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) {
 		renderfx = RF_THIRD_PERSON;         // only draw in mirrors
 	}
-
-	// draw the player in cameras
-//	if ( cg.cameraMode ) {
-//		renderfx &= ~RF_THIRD_PERSON;
-//	}
 
 	if ( cg_shadows.integer == 3 && shadow ) {
 		renderfx |= RF_SHADOW_PLANE;

@@ -195,28 +195,9 @@ void RB_ShadowTessEnd( void ) {
 
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 
-	// ==========================================
-	// MODERNIZED: Volumetric Dither Penumbra
-	// ==========================================
-	// We introduce a high-frequency pseudo-random dither to the light vector 
-	// based on the vertex index. This spreads the volume out at long distances,
-	// creating a gorgeous, soft contact-hardening effect on the edges.
+	// Extrude shadow volume vertices cleanly along the light vector to guarantee closed silhouettes
 	for ( i = 0 ; i < tess.numVertexes ; i++ ) {
-		vec3_t ditheredLight;
-		VectorCopy( lightDir, ditheredLight );
-
-		// A fast, deterministic high-frequency noise table based on vertex index
-		float noiseX = (float)((i % 7) - 3) * 0.007f;
-		float noiseY = (float)(((i + 2) % 11) - 5) * 0.007f;
-		float noiseZ = (float)(((i + 5) % 13) - 6) * 0.007f;
-
-		ditheredLight[0] += noiseX;
-		ditheredLight[1] += noiseY;
-		ditheredLight[2] += noiseZ;
-		VectorNormalize( ditheredLight );
-
-		// Extrude using the dithered vector
-		VectorMA( tess.xyz[i], -3000.0f, ditheredLight, shadowXyz[i] );
+		VectorMA( tess.xyz[i], -3000.0f, lightDir, shadowXyz[i] );
 	}
 
 	// decide which triangles face the light
@@ -277,18 +258,13 @@ void RB_ShadowTessEnd( void ) {
 		qglDisableClientState( GL_COLOR_ARRAY );
 #endif
 
-	// ==========================================
-	// MODERNIZED: Carmack's Reverse (Z-Fail)
-	// ==========================================
-	// Swap from Z-Pass to Z-Fail. This keeps the stencil count accurate 
-	// even if the camera passes directly inside an NPC's shadow volume.
-	
-	GL_Cull( CT_FRONT_SIDED );                 // Render BACK faces
-	qglStencilOp( GL_KEEP, GL_INCR, GL_KEEP ); // Increment stencil on depth FAIL
+	// Standard Z-Pass stencil volume algorithm (increments/decrements on depth pass)
+	GL_Cull( CT_BACK_SIDED );                  // Render FRONT faces
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_INCR ); // Increment stencil on depth PASS
 	R_RenderShadowEdges();
 
-	GL_Cull( CT_BACK_SIDED );                  // Render FRONT faces
-	qglStencilOp( GL_KEEP, GL_DECR, GL_KEEP ); // Decrement stencil on depth FAIL
+	GL_Cull( CT_FRONT_SIDED );                 // Render BACK faces
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_DECR ); // Decrement stencil on depth PASS
 
 #ifdef USE_OPENGLES
 	qglDrawElements(GL_TRIANGLES, idx, GL_UNSIGNED_SHORT, indexes);
@@ -327,13 +303,9 @@ void RB_ShadowFinish( void ) {
 
 	qglLoadIdentity();
 
-	// ==========================================
-	// MODERNIZED: Cinematic Ambient Alpha Blend
-	// ==========================================
-	// Instead of crushing colors with a muddy gray multiplier, we apply a 
-	// realistic cinematic shadow color (rich deep blue/slate) at 45% opacity.
-	qglColor4f( 0.08f, 0.1f, 0.15f, 0.45f ); 
-	GL_State( GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
+	// Blend 50% dark overlay over stencil volume pixels
+	qglColor4f( 0.0f, 0.0f, 0.0f, 0.5f ); 
+	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
 
 #ifdef USE_OPENGLES
 	GLboolean text = qglIsEnabled(GL_TEXTURE_COORD_ARRAY);
