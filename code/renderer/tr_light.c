@@ -134,39 +134,56 @@ void R_DlightBmodel( bmodel_t *bmodel ) {
 	tr.currentEntity->needDlights = mask;
 
 	// set the dlight bits in all the surfaces
-	for (i = 0 ; i < bmodel->numSurfaces ; i++)
-	{
-		// Start with the bmodel's global light mask
-		int surfMask = mask;
-		surf = bmodel->firstSurface + i;
+	int numWorkers = ri.Sys_GetNumWorkers();
+	if ( mask && numWorkers > 1 && bmodel->numSurfaces > 32 ) {
+		dlight_bmodel_job_t jobs[16];
+		int jobsCount = numWorkers;
+		if ( jobsCount > 16 ) jobsCount = 16;
+		int surfsPerJob = bmodel->numSurfaces / jobsCount;
 
-		if ( surfMask && *surf->data == SF_FACE ) {
-			srfSurfaceFace_t *face = (srfSurfaceFace_t *)surf->data;
-			
-			for ( j = 0 ; j < tr.refdef.num_dlights ; j++ ) {
-				if ( surfMask & ( 1 << j ) ) {
-					dl = &tr.refdef.dlights[j];
-					
-					float dist = DotProduct( dl->transformed, face->plane.normal ) - face->plane.dist;
-					
-					if ( dist < -dl->radius ) {
-						surfMask &= ~( 1 << j );
+		for ( i = 0; i < jobsCount; i++ ) {
+			jobs[i].bmodel = bmodel;
+			jobs[i].startSurf = i * surfsPerJob;
+			jobs[i].endSurf = ( i == jobsCount - 1 ) ? bmodel->numSurfaces : ( i + 1 ) * surfsPerJob;
+			jobs[i].mask = mask;
+			ri.Sys_QueueJob( R_DlightBmodel_Job, &jobs[i] );
+		}
+		ri.Sys_WaitJobs();
+	} else {
+		for (i = 0 ; i < bmodel->numSurfaces ; i++)
+		{
+			// Start with the bmodel's global light mask
+			int surfMask = mask;
+			surf = bmodel->firstSurface + i;
+
+			if ( surfMask && *surf->data == SF_FACE ) {
+				srfSurfaceFace_t *face = (srfSurfaceFace_t *)surf->data;
+				
+				for ( j = 0 ; j < tr.refdef.num_dlights ; j++ ) {
+					if ( surfMask & ( 1 << j ) ) {
+						dl = &tr.refdef.dlights[j];
+						
+						float dist = DotProduct( dl->transformed, face->plane.normal ) - face->plane.dist;
+						
+						if ( dist < -dl->radius ) {
+							surfMask &= ~( 1 << j );
+						}
 					}
 				}
+				face->dlightBits = surfMask;
 			}
-			face->dlightBits = surfMask;
-		}
-		else if (*surf->data == SF_GRID)
-		{
-			((srfGridMesh_t *)surf->data)->dlightBits = surfMask;
-		}
-		else if (*surf->data == SF_TRIANGLES)
-		{
-			((srfTriangles2_t *)surf->data)->dlightBits = surfMask;
-		}
-		else if (*surf->data == SF_FOLIAGE)
-		{
-			((srfFoliage_t *)surf->data)->dlightBits = surfMask;
+			else if (*surf->data == SF_GRID)
+			{
+				((srfGridMesh_t *)surf->data)->dlightBits = surfMask;
+			}
+			else if (*surf->data == SF_TRIANGLES)
+			{
+				((srfTriangles2_t *)surf->data)->dlightBits = surfMask;
+			}
+			else if (*surf->data == SF_FOLIAGE)
+			{
+				((srfFoliage_t *)surf->data)->dlightBits = surfMask;
+			}
 		}
 	}
 }
