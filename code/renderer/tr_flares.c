@@ -321,11 +321,11 @@ RB_TestFlare
 */
 void RB_TestFlare( flare_t *f ) {
 #ifndef USE_OPENGLES
-	float			depth;
+	float    depth;
 #endif
-	qboolean		visible;
-	float			fade;
-	float			screenZ;
+	qboolean visible;
+	float    fade;
+	float    screenZ;
 
 	backEnd.pc.c_flareTests++;
 
@@ -335,43 +335,43 @@ void RB_TestFlare( flare_t *f ) {
 
 	// read back the z buffer contents
 #ifdef USE_OPENGLES
-	screenZ = 0;
+	screenZ = 0.0f;
 #else
 	qglReadPixels( f->windowX, f->windowY, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &depth );
 
 	screenZ = backEnd.viewParms.projectionMatrix[14] / 
-		( ( 2*depth - 1 ) * backEnd.viewParms.projectionMatrix[11] - backEnd.viewParms.projectionMatrix[10] );
+		( ( 2.0f * depth - 1.0f ) * backEnd.viewParms.projectionMatrix[11] - backEnd.viewParms.projectionMatrix[10] );
 #endif
 
 	visible = (qboolean)( f->flags & 1 );
 
-	if ( -f->eyeZ - -screenZ  > 24 )
+	if ( -f->eyeZ - -screenZ > 24.0f ) {
 		visible = qfalse;
+	}
 
 	if ( visible ) {
 		if ( !f->visible ) {
-			f->visible = qtrue;
+			f->visible  = qtrue;
 			f->fadeTime = backEnd.refdef.time - 1;
 		}
-		fade = ( ( backEnd.refdef.time - f->fadeTime ) /1000.0f ) * r_flareFade->value;
+		fade = ( ( backEnd.refdef.time - f->fadeTime ) * 0.001f ) * r_flareFade->value;
 	} else {
 		if ( f->visible ) {
-			f->visible = qfalse;
+			f->visible  = qfalse;
 			f->fadeTime = backEnd.refdef.time - 1;
 		}
-		fade = 1.0f - ( ( backEnd.refdef.time - f->fadeTime ) / 1000.0f ) * r_flareFade->value;
+		fade = 1.0f - ( ( backEnd.refdef.time - f->fadeTime ) * 0.001f ) * r_flareFade->value;
 	}
 
-	if ( fade < 0 ) {
-		fade = 0;
-	}
-	if ( fade > 1 ) {
-		fade = 1;
+	// Direct explicit clamping between 0.0f and 1.0f
+	if ( fade < 0.0f ) {
+		fade = 0.0f;
+	} else if ( fade > 1.0f ) {
+		fade = 1.0f;
 	}
 
 	f->drawIntensity = fade;
 }
-
 
 /*
 ==================
