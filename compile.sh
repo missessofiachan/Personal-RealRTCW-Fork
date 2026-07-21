@@ -81,12 +81,12 @@ DISTROBOX_NAME=""
 if [ "$INSIDE_CONTAINER" = false ]; then
     if command -v distrobox &> /dev/null; then
         # Check if Bazzite-dev-nvidia or Bazzite-dev-env container exists
-        if distrobox list 2>/dev/null | grep -q "Bazzite-dev-nvidia"; then
-            USE_DISTROBOX=true
-            DISTROBOX_NAME="Bazzite-dev-nvidia"
-        elif distrobox list 2>/dev/null | grep -q "Bazzite-dev-env"; then
+        if distrobox list 2>/dev/null | grep -q "Bazzite-dev-env"; then
             USE_DISTROBOX=true
             DISTROBOX_NAME="Bazzite-dev-env"
+        elif distrobox list 2>/dev/null | grep -q "Bazzite-dev-nvidia"; then
+            USE_DISTROBOX=true
+            DISTROBOX_NAME="Bazzite-dev-nvidia"
         fi
     fi
 fi
