@@ -12,7 +12,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 | **Collision & Maps** | Physics Hulls & Spatial Queries | `cm_load.c`, `cm_trace.c`, Branchless Box Optimization |
 | **Multithreading** | Parallelization & Job Dispatching | `gp_jobsystem`, Skeletal Skinning, Async Audio Codecs |
 | **Audio Pipeline** | Spatial Audio & Reverb Simulation | OpenAL EFX, EAX, 128-bit SSE Audio Mixer |
-| **Renderer & Shading** | Cinematic Visuals & Tech Modernization | Z-Fail (Carmack's Reverse), Pseudo-Soft Shadows, PBR Attenuation |
+| **Renderer & Shading** | Cinematic Visuals & Tech Modernization | Z-Fail (Carmack's Reverse), Pseudo-Soft Shadows, PBR Attenuation, Flare Precomputation |
 | **QVM Compiler** | Execution Performance & Security | `vm_x86.c`, `vm.c`, x86_64 JIT, W^X Memory Hardening |
 | **Memory Management** | Low-Latency Allocation | `mimalloc`, Eager Page Commits, 2MB Huge Pages |
 
@@ -39,7 +39,6 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Parallel Brush Model Dynamic Light Culling (`tr_light.c`)**: Partitions dynamic light plane equations across non-overlapping surface chunks for complex brush models (`R_DlightBmodel`).
 * **VM Engine-Game Syscall Extensions (`g_public.h` / `cg_syscalls.asm` / `g_syscalls.asm`)**: Exposes job system queuing (`trap_Sys_QueueJob`, `trap_Sys_WaitJobs`) across native and QVM module boundaries with aligned syscall assembly equates.
 * **Parallel CPU Skeletal Vertex Skinning (`tr_animation.c`)**: Partitions large skeletal model surfaces (`numVerts > 256`) into 256-vertex chunks, distributing skinning across background workers to maximize high refresh-rate monitors.
-
 * **Thread-Isolated Memory Alignment**: Configures concurrent skinning chunks to write into isolated target blocks to eliminate false cache-line sharing, optimizing L1/L2 cache efficiency.
 * **Asynchronous Background Asset Loading (`snd_openal.c` / `snd_codec.c`)**: Offloads file loading and WAV/OGG/Opus decompression tasks to worker threads using a thread-safe custom allocator (`S_CodecAllocateTemp`).
 
@@ -50,7 +49,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **X-Macro API Bindings**: Consolidates dynamically loaded function pointer declarations, definitions, loading, and unloading routines for OpenAL and cURL using unified compile-time X-Macros.
 * **SIMD Audio Mixer**: Employs 128-bit SSE lanes and saturation packing (`_mm_packs_epi32`) to mix up to 4 stereo streams in parallel without branching, completely eliminating audio cracking.
 
-### 💡 Cinematic Rendering & Lighting Pipeline (`tr_shadows.c` / `tr_light.c` / `tr_bloom.c`)
+### 💡 Cinematic Rendering & Lighting Pipeline (`tr_shadows.c` / `tr_light.c` / `tr_bloom.c` / `tr_flares.c`)
 * **Carmack's Reverse (Z-Fail Stencil Shadows)**: Switched the volumetric shadow rendering pipeline from Z-Pass to Z-Fail culling to prevent the entire screen from glitching when the camera clips inside a shadow volume.
 * **Volumetric Contact Hardening (Pseudo-Soft Shadows)**: Injects a high-frequency, vertex-indexed dither pattern into the light extrusion vectors, creating realistic light penumbras that blur naturally over distance.
 * **Cinematic Ambient Shadow Blending**: Replaces the hardcoded multiplicative gray blend with an alpha-blended, slate-blue tinted shadow pass, allowing shadows to absorb environmental ambient colors.
@@ -61,6 +60,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Simulated Global Illumination (Bounce Light)**: Injects a fractional percentage of dynamic directed light back into the entity's ambient channel, simulating floor and wall light bounces without raytracing overhead.
 * **Fast Surface-Aware Plane Culling (`R_DlightBmodel`)**: Evaluates individual polygon faces against active dynamic lights using accelerated dot-product plane filtering, cutting wasted GPU vertex cycles.
 * **Modernized Aspect-Correct Bloom & Spectral Saturation**: Fixes legacy aspect-ratio viewport bugs and implements screen-space energy conservation blending alongside integrated $O(1)$ single-pass photographic highlight extraction.
+* **Precomputed Flare Falloff & Fast Bounds Culling (`tr_flares.c`)**: Precomputes intensity falloff square roots globally upon CVAR updates to eliminate runtime per-flare `sqrtf()` calls, early-culls back-facing flare normals prior to clip transformations, unrolls 3D fog volume bounds queries, and pre-calculates quad vertex attributes.
 
 ### 🖼️ Modernized Backend Renderer & Geometry Streaming (`tr_surface.c`)
 * **Immediate Mode Eradication (`RB_SurfaceBeam` / `RB_SurfaceAxis`)**: Stripped all legacy fixed-function immediate mode paths (`qglBegin`/`qglEnd`) from procedural entities, re-routing them to stream directly into the unified engine vertex and index geometry cache buffers.
