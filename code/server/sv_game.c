@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 // sv_game.c -- interface to the game dll
 
 #include "server.h"
+#include "../qcommon/gp_jobsystem.h"
 
 #include "../botlib/botlib.h"
 
@@ -378,6 +379,12 @@ intptr_t SV_GameSystemCalls( intptr_t *args ) {
 		return 0;
 	case G_TRACECAPSULE:
 		SV_Trace( VMA( 1 ), VMA( 2 ), VMA( 3 ), VMA( 4 ), VMA( 5 ), args[6], args[7], /* int capsule */ qtrue );
+		return 0;
+	case G_SYS_QUEUEJOB:
+		Sys_QueueJob( (void (*)(void*))args[1], VMA( 2 ) );
+		return 0;
+	case G_SYS_WAITJOBS:
+		Sys_WaitJobs();
 		return 0;
 	case G_POINT_CONTENTS:
 		return SV_PointContents( VMA( 1 ), args[2] );

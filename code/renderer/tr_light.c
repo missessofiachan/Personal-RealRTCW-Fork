@@ -58,6 +58,42 @@ void R_TransformDlights( int count, dlight_t *dl, orientationr_t *or ) {
 	}
 }
 
+typedef struct {
+	bmodel_t *bmodel;
+	int startSurf;
+	int endSurf;
+	int mask;
+} dlight_bmodel_job_t;
+
+static void R_DlightBmodel_Job( void *data ) {
+	dlight_bmodel_job_t *job = (dlight_bmodel_job_t *)data;
+	bmodel_t *bm = job->bmodel;
+	int m = job->mask;
+	for ( int k = job->startSurf; k < job->endSurf; k++ ) {
+		int surfMask = m;
+		msurface_t *s = bm->firstSurface + k;
+		if ( surfMask && *s->data == SF_FACE ) {
+			srfSurfaceFace_t *face = (srfSurfaceFace_t *)s->data;
+			for ( int l = 0 ; l < tr.refdef.num_dlights ; l++ ) {
+				if ( surfMask & ( 1 << l ) ) {
+					dlight_t *dl = &tr.refdef.dlights[l];
+					float dist = DotProduct( dl->transformed, face->plane.normal ) - face->plane.dist;
+					if ( dist < -dl->radius ) {
+						surfMask &= ~( 1 << l );
+					}
+				}
+			}
+			face->dlightBits = surfMask;
+		} else if ( *s->data == SF_GRID ) {
+			( (srfGridMesh_t *)s->data )->dlightBits = surfMask;
+		} else if ( *s->data == SF_TRIANGLES ) {
+			( (srfTriangles2_t *)s->data )->dlightBits = surfMask;
+		} else if ( *s->data == SF_FOLIAGE ) {
+			( (srfFoliage_t *)s->data )->dlightBits = surfMask;
+		}
+	}
+}
+
 /*
 =============
 R_DlightBmodel
@@ -104,12 +140,6 @@ void R_DlightBmodel( bmodel_t *bmodel ) {
 		int surfMask = mask;
 		surf = bmodel->firstSurface + i;
 
-		// ==========================================
-		// MODERNIZED: Surface-Aware Light Culling
-		// ==========================================
-		// If the surface is a standard geometric face, we perform a rapid dot-product 
-		// check against the plane. If the light source is mathematically entirely behind 
-		// the face, we strip the light bit. This saves immense GPU vertex processing.
 		if ( surfMask && *surf->data == SF_FACE ) {
 			srfSurfaceFace_t *face = (srfSurfaceFace_t *)surf->data;
 			
@@ -117,12 +147,10 @@ void R_DlightBmodel( bmodel_t *bmodel ) {
 				if ( surfMask & ( 1 << j ) ) {
 					dl = &tr.refdef.dlights[j];
 					
-					// Calculate light distance from the geometric plane
 					float dist = DotProduct( dl->transformed, face->plane.normal ) - face->plane.dist;
 					
-					// If the light is deeper behind the plane than its own radius, it cannot touch this face
 					if ( dist < -dl->radius ) {
-						surfMask &= ~( 1 << j ); // Strip the specific light flag via bitwise negation
+						surfMask &= ~( 1 << j );
 					}
 				}
 			}

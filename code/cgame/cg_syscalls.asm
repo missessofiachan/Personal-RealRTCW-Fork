@@ -131,4 +131,6 @@ equ trap_GetModelInfo			-126
 equ trap_Alloc					-901
 
 equ trap_R_RegisterSmartSkin    -902
+equ trap_QueueJob               -903
+equ trap_WaitJobs               -904
 

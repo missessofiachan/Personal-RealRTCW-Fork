@@ -48,6 +48,8 @@ equ trap_SnapVector			-45
 equ trap_TraceCapsule		-46
 equ trap_EntityContactCapsule	-47
 equ trap_GetTag				-48
+equ trap_Sys_QueueJob			-49
+equ trap_Sys_WaitJobs			-50
 
 equ	memset					-101
 equ	memcpy					-102

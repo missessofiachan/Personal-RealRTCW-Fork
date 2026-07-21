@@ -829,3 +829,11 @@ int trap_PC_FreeSource( int handle ) {
 int trap_PC_SourceFileAndLine( int handle, char *filename, int *line ) {
 	return syscall( BOTLIB_PC_SOURCE_FILE_AND_LINE, handle, filename, line );
 }
+
+void trap_Sys_QueueJob( void (*work)(void*), void *arg ) {
+	syscall( G_SYS_QUEUEJOB, work, arg );
+}
+
+void trap_Sys_WaitJobs( void ) {
+	syscall( G_SYS_WAITJOBS );
+}

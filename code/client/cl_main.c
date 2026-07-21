@@ -3484,6 +3484,7 @@ void CL_InitRef( void ) {
 	ri.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
 	ri.Sys_QueueJob = Sys_QueueJob;
 	ri.Sys_WaitJobs = Sys_WaitJobs;
+	ri.Sys_GetNumWorkers = Sys_GetNumWorkers;
 
 	ret = GetRefAPI( REF_API_VERSION, &ri );
 

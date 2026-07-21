@@ -201,6 +201,7 @@ typedef struct {
 	qboolean (*Sys_LowPhysicalMemory)( void );
 	void (*Sys_QueueJob)( void ( *work )( void * ), void *arg );
 	void (*Sys_WaitJobs)( void );
+	int  (*Sys_GetNumWorkers)( void );
 } refimport_t;
 
 

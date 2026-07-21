@@ -1445,8 +1445,6 @@ R_AddDrawSurf
 */
 void R_AddDrawSurf( surfaceType_t* surface, shader_t* shader, int fogIndex, int dlightMap, int atiTess )
 {
-    int index = tr.refdef.numDrawSurfs & DRAWSURF_MASK;
-
     // Build 64-bit sort key
     uint64_t sort = 0;
     sort |= ((uint64_t)(dlightMap) & QSORT_DLIGHTMAP_MASK) << QSORT_DLIGHTMAP_SHIFT;
@@ -1457,9 +1455,15 @@ void R_AddDrawSurf( surfaceType_t* surface, shader_t* shader, int fogIndex, int 
 	sort |= (uint64_t)tr.shiftedEntityNum;
     sort |= ((uint64_t)shader->sortedIndex & QSORT_SHADERNUM_MASK) << QSORT_SHADERNUM_SHIFT;
 
+#if defined(__GNUC__) || defined(__clang__)
+    int pos = __sync_fetch_and_add(&tr.refdef.numDrawSurfs, 1);
+#else
+    int pos = tr.refdef.numDrawSurfs++;
+#endif
+    int index = pos & DRAWSURF_MASK;
+
     tr.refdef.drawSurfs[index].sort    = sort;
     tr.refdef.drawSurfs[index].surface = surface;
-    tr.refdef.numDrawSurfs++;
 }
 
 /*

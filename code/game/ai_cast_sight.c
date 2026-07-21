@@ -598,6 +598,17 @@ AICast_SightUpdate
 */
 static int lastsrc = 0, lastdest = 0;
 
+typedef struct {
+	int srcNum;
+	int destNum;
+	qboolean isVisible;
+} ai_sight_job_t;
+
+static void AICast_CheckVisibility_Job( void *data ) {
+	ai_sight_job_t *job = (ai_sight_job_t *)data;
+	job->isVisible = AICast_CheckVisibility( &g_entities[job->srcNum], &g_entities[job->destNum] );
+}
+
 void AICast_SightUpdate( int numchecks ) {
 	int count = 0, destcount, srccount;
 	int src = 0, dest = 0;
@@ -621,6 +632,9 @@ void AICast_SightUpdate( int numchecks ) {
 
 	// First, check all REAL clients, so sighting player is only effected by reaction_time, not
 	// effected by framerate also
+	ai_sight_job_t jobs[MAX_CLIENTS];
+	int jobCount = 0;
+
 	for (   srccount = 0, src = 0, srcent = &g_entities[0];
 			src < aicast_maxclients && srccount < level.numPlayingClients;
 			src++, srcent++ )
@@ -651,7 +665,6 @@ void AICast_SightUpdate( int numchecks ) {
 		trap_AAS_SetCurrentWorld( cs->aasWorldIndex );
 
 		for (   destcount = 0, dest = 0, destent = g_entities;
-				//dest < aicast_maxclients && destcount < level.numPlayingClients;
 				destent == g_entities;  // only check the player
 				dest++, destent++ )
 		{
@@ -674,10 +687,6 @@ void AICast_SightUpdate( int numchecks ) {
 
 			vis = &cs->vislist[destent->s.number];
 
-			// OPTIMIZATION: if we have seen the player, abort checking each frame
-			//if (vis->real_visible_timestamp && cs->aiState > AISTATE_QUERY && AICast_HostileEnemy(cs, destent->s.number))
-			//	continue;
-
 			// if we saw them last frame, skip this test, so we only check initial sightings each frame
 			if ( vis->lastcheck_timestamp == vis->real_visible_timestamp ) {
 				continue;
@@ -687,10 +696,8 @@ void AICast_SightUpdate( int numchecks ) {
 			float dist = VectorDistance( srcent->client->ps.origin, destent->client->ps.origin );
 			int checkDelay;
 			if ( dist < 500.0f ) {
-				// To restore default close-range behavior, set: checkDelay = 40 + rand() % 40;
 				checkDelay = 30 + rand() % 30;
 			} else if ( dist > 1500.0f ) {
-				// To restore default far-range behavior, set: checkDelay = 40 + rand() % 40;
 				checkDelay = 200 + rand() % 200;
 			} else {
 				checkDelay = 40 + rand() % 40;
@@ -705,7 +712,7 @@ void AICast_SightUpdate( int numchecks ) {
 					&&  ( AICast_CheckVisibility( srcent, destent ) ) ) {
 				// record the sighting
 				AICast_UpdateVisibility( srcent, destent, qtrue, qtrue );
-			} else // if (vis->lastcheck_timestamp == vis->real_update_timestamp)
+			} else
 			{
 				AICast_UpdateNonVisibility( srcent, destent, qtrue );
 			}

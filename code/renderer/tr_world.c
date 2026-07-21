@@ -605,6 +605,48 @@ static const byte *R_ClusterPVS( int cluster ) {
 
 
 
+typedef struct {
+	int startNode;
+	int endNode;
+	const byte *vis;
+	int visCount;
+	int numClusters;
+} mark_leaves_job_t;
+
+static void R_MarkLeaves_Job( void *data ) {
+	mark_leaves_job_t *job = (mark_leaves_job_t *)data;
+	const byte *vis = job->vis;
+	int visCount = job->visCount;
+	int numClusters = job->numClusters;
+
+	for ( int i = job->startNode; i < job->endNode; i++ ) {
+		mnode_t *leaf = &tr.world->nodes[i];
+		int cluster = leaf->cluster;
+		if ( cluster < 0 || cluster >= numClusters ) {
+			continue;
+		}
+
+		// check general pvs
+		if ( !( vis[cluster >> 3] & ( 1 << ( cluster & 7 ) ) ) ) {
+			continue;
+		}
+
+		// check for door connection
+		if ( ( tr.refdef.areamask[leaf->area >> 3] & ( 1 << ( leaf->area & 7 ) ) ) ) {
+			continue;       // not visible
+		}
+
+		mnode_t *parent = leaf;
+		do {
+			if ( parent->visframe == visCount ) {
+				break;
+			}
+			parent->visframe = visCount;
+			parent = parent->parent;
+		} while ( parent );
+	}
+}
+
 /*
 ===============
 R_MarkLeaves
@@ -659,30 +701,49 @@ static void R_MarkLeaves( void ) {
 
 	vis = R_ClusterPVS( tr.viewCluster );
 
-	for ( i = 0,leaf = tr.world->nodes ; i < tr.world->numnodes ; i++, leaf++ ) {
-		cluster = leaf->cluster;
-		if ( cluster < 0 || cluster >= tr.world->numClusters ) {
-			continue;
-		}
+	int numWorkers = ri.Sys_GetNumWorkers();
+	if ( numWorkers > 1 && tr.world->numnodes > 128 ) {
+		mark_leaves_job_t jobs[32];
+		int totalNodes = tr.world->numnodes;
+		int jobsCount = numWorkers;
+		if ( jobsCount > 32 ) jobsCount = 32;
+		int nodesPerJob = totalNodes / jobsCount;
 
-		// check general pvs
-		if ( !( vis[cluster >> 3] & ( 1 << ( cluster & 7 ) ) ) ) {
-			continue;
+		for ( i = 0; i < jobsCount; i++ ) {
+			jobs[i].startNode = i * nodesPerJob;
+			jobs[i].endNode = ( i == jobsCount - 1 ) ? totalNodes : ( i + 1 ) * nodesPerJob;
+			jobs[i].vis = vis;
+			jobs[i].visCount = tr.visCount;
+			jobs[i].numClusters = tr.world->numClusters;
+			ri.Sys_QueueJob( R_MarkLeaves_Job, &jobs[i] );
 		}
-
-		// check for door connection
-		if ( ( tr.refdef.areamask[leaf->area >> 3] & ( 1 << ( leaf->area & 7 ) ) ) ) {
-			continue;       // not visible
-		}
-
-		parent = leaf;
-		do {
-			if ( parent->visframe == tr.visCount ) {
-				break;
+		ri.Sys_WaitJobs();
+	} else {
+		for ( i = 0,leaf = tr.world->nodes ; i < tr.world->numnodes ; i++, leaf++ ) {
+			cluster = leaf->cluster;
+			if ( cluster < 0 || cluster >= tr.world->numClusters ) {
+				continue;
 			}
-			parent->visframe = tr.visCount;
-			parent = parent->parent;
-		} while ( parent );
+
+			// check general pvs
+			if ( !( vis[cluster >> 3] & ( 1 << ( cluster & 7 ) ) ) ) {
+				continue;
+			}
+
+			// check for door connection
+			if ( ( tr.refdef.areamask[leaf->area >> 3] & ( 1 << ( leaf->area & 7 ) ) ) ) {
+				continue;       // not visible
+			}
+
+			parent = leaf;
+			do {
+				if ( parent->visframe == tr.visCount ) {
+					break;
+				}
+				parent->visframe = tr.visCount;
+				parent = parent->parent;
+			} while ( parent );
+		}
 	}
 }
 
@@ -724,6 +785,17 @@ void R_LoadWorldMapFromBuffer( void *bufferData, int bufferLen ) {
 }
 
 
+typedef struct {
+	mnode_t *node;
+	unsigned int planeBits;
+	unsigned int dlightBits;
+} bsp_job_t;
+
+static void R_RecursiveWorldNode_WorkerJob( void *data ) {
+	bsp_job_t *job = (bsp_job_t *)data;
+	R_RecursiveWorldNode( job->node, job->planeBits, job->dlightBits );
+}
+
 /*
 =============
 R_AddWorldSurfaces
@@ -748,10 +820,6 @@ void R_AddWorldSurfaces( void ) {
 	// clear out the visible min/max
 	ClearBounds( tr.viewParms.visBounds[0], tr.viewParms.visBounds[1] );
 
-	// perform frustum culling and add all the potentially visible surfaces
-	if ( tr.refdef.num_dlights > MAX_DLIGHTS ) {
-		tr.refdef.num_dlights = MAX_DLIGHTS ;
-	}
 	R_RecursiveWorldNode( tr.world->nodes, 15, ( 1ULL << tr.refdef.num_dlights ) - 1 );
 }
 /*
