@@ -379,117 +379,96 @@ RB_RenderFlare
 ==================
 */
 void RB_RenderFlare( flare_t *f ) {
-	float size;
+	float  size;
 	vec3_t color;
-	int iColor[3];
-	float distance, intensity, factor;
-	byte fogFactors[3] = {255, 255, 255};
+	int    iColor[3];
+	float  distance, intensity, factor;
+	byte   fogFactors[3] = { 255, 255, 255 };
+	int    alpha;
 
 	backEnd.pc.c_flareRenders++;
 
-	// We don't want too big values anyways when dividing by distance.
-	if(f->eyeZ > -1.0f)
+	if ( f->eyeZ > -1.0f ) {
 		distance = 1.0f;
-	else
+	} else {
 		distance = -f->eyeZ;
-
-	// calculate the flare size..
-	size = backEnd.viewParms.viewportWidth * ( r_flareSize->value/640.0f + 8 / distance );
-
-/*
- * This is an alternative to intensity scaling. It changes the size of the flare on screen instead
- * with growing distance. See in the description at the top why this is not the way to go.
-	// size will change ~ 1/r.
-	size = backEnd.viewParms.viewportWidth * (r_flareSize->value / (distance * -2.0f));
-*/
-
-/*
- * As flare sizes stay nearly constant with increasing distance we must decrease the intensity
- * to achieve a reasonable visual result. The intensity is ~ (size^2 / distance^2) which can be
- * got by considering the ratio of
- * (flaresurface on screen) : (Surface of sphere defined by flare origin and distance from flare)
- * An important requirement is:
- * intensity <= 1 for all distances.
- *
- * The formula used here to compute the intensity is as follows:
- * intensity = flareCoeff * size^2 / (distance + size*sqrt(flareCoeff))^2
- * As you can see, the intensity will have a max. of 1 when the distance is 0.
- * The coefficient flareCoeff will determine the falloff speed with increasing distance.
-*/
-
-	factor = distance + size * sqrt(flareCoeff);
-	
-	intensity = flareCoeff * size * size / (factor * factor);
-
-	VectorScale(f->color, f->drawIntensity * intensity, color);
-
-	// Calculations for fogging
-	if(tr.world && f->fogNum > 0 && f->fogNum < tr.world->numfogs)
-	{
-		tess.numVertexes = 1;
-		VectorCopy(f->origin, tess.xyz[0]);
-		tess.fogNum = f->fogNum;
-	
-		RB_CalcModulateColorsByFog(fogFactors);
-		
-		// We don't need to render the flare if colors are 0 anyways.
-		if(!(fogFactors[0] || fogFactors[1] || fogFactors[2]))
-			return;
 	}
 
-	iColor[0] = color[0] * fogFactors[0];
-	iColor[1] = color[1] * fogFactors[1];
-	iColor[2] = color[2] * fogFactors[2];
+	// Calculate flare size
+	size = backEnd.viewParms.viewportWidth * ( r_flareSize->value * ( 1.0f / 640.0f ) + 8.0f / distance );
 
-	if ( f->flags & 2 ) {  // spotlight flare
+	// Precomputed square root falloff calculation
+	factor    = distance + size * flareCoeffSqrt;
+	intensity = flareCoeffFloat * size * size / ( factor * factor );
+
+	VectorScale( f->color, f->drawIntensity * intensity, color );
+
+	// Fogging evaluation
+	if ( tr.world && f->fogNum > 0 && f->fogNum < tr.world->numfogs ) {
+		tess.numVertexes = 1;
+		VectorCopy( f->origin, tess.xyz[0] );
+		tess.fogNum = f->fogNum;
+
+		RB_CalcModulateColorsByFog( fogFactors );
+
+		if ( !fogFactors[0] && !fogFactors[1] && !fogFactors[2] ) {
+			return;
+		}
+	}
+
+	iColor[0] = (int)( color[0] * fogFactors[0] );
+	iColor[1] = (int)( color[1] * fogFactors[1] );
+	iColor[2] = (int)( color[2] * fogFactors[2] );
+	alpha     = (int)( f->drawIntensity * 255.0f );
+
+	if ( f->flags & 2 ) {  // Spotlight flare
 		RB_BeginSurface( tr.spotFlareShader, f->fogNum );
 	} else {
 		RB_BeginSurface( tr.flareShader, f->fogNum );
 	}
 
-	// FIXME: use quadstamp?
-	tess.xyz[tess.numVertexes][0] = f->windowX - size;
-	tess.xyz[tess.numVertexes][1] = f->windowY - size;
-	tess.texCoords[tess.numVertexes][0][0] = 0;
-	tess.texCoords[tess.numVertexes][0][1] = 0;
-	tess.vertexColors[tess.numVertexes][0] = iColor[0];
-	tess.vertexColors[tess.numVertexes][1] = iColor[1];
-	tess.vertexColors[tess.numVertexes][2] = iColor[2];
-	tess.vertexColors[tess.numVertexes][3] = f->drawIntensity * 255;      //----(SA)	mod for alpha blend rather than additive
-//	tess.vertexColors[tess.numVertexes][3] = 255;		//----(SA)	mod for alpha blend rather than additive
+	// Vertex 0 (Bottom-Left)
+	tess.xyz[tess.numVertexes][0]           = f->windowX - size;
+	tess.xyz[tess.numVertexes][1]           = f->windowY - size;
+	tess.texCoords[tess.numVertexes][0][0]  = 0.0f;
+	tess.texCoords[tess.numVertexes][0][1]  = 0.0f;
+	tess.vertexColors[tess.numVertexes][0]  = iColor[0];
+	tess.vertexColors[tess.numVertexes][1]  = iColor[1];
+	tess.vertexColors[tess.numVertexes][2]  = iColor[2];
+	tess.vertexColors[tess.numVertexes][3]  = alpha;
 	tess.numVertexes++;
 
-	tess.xyz[tess.numVertexes][0] = f->windowX - size;
-	tess.xyz[tess.numVertexes][1] = f->windowY + size;
-	tess.texCoords[tess.numVertexes][0][0] = 0;
-	tess.texCoords[tess.numVertexes][0][1] = 1;
-	tess.vertexColors[tess.numVertexes][0] = iColor[0];
-	tess.vertexColors[tess.numVertexes][1] = iColor[1];
-	tess.vertexColors[tess.numVertexes][2] = iColor[2];
-	tess.vertexColors[tess.numVertexes][3] = f->drawIntensity * 255;      //----(SA)	mod for alpha blend rather than additive
-//	tess.vertexColors[tess.numVertexes][3] = 255;		//----(SA)	mod for alpha blend rather than additive
+	// Vertex 1 (Top-Left)
+	tess.xyz[tess.numVertexes][0]           = f->windowX - size;
+	tess.xyz[tess.numVertexes][1]           = f->windowY + size;
+	tess.texCoords[tess.numVertexes][0][0]  = 0.0f;
+	tess.texCoords[tess.numVertexes][0][1]  = 1.0f;
+	tess.vertexColors[tess.numVertexes][0]  = iColor[0];
+	tess.vertexColors[tess.numVertexes][1]  = iColor[1];
+	tess.vertexColors[tess.numVertexes][2]  = iColor[2];
+	tess.vertexColors[tess.numVertexes][3]  = alpha;
 	tess.numVertexes++;
 
-	tess.xyz[tess.numVertexes][0] = f->windowX + size;
-	tess.xyz[tess.numVertexes][1] = f->windowY + size;
-	tess.texCoords[tess.numVertexes][0][0] = 1;
-	tess.texCoords[tess.numVertexes][0][1] = 1;
-	tess.vertexColors[tess.numVertexes][0] = iColor[0];
-	tess.vertexColors[tess.numVertexes][1] = iColor[1];
-	tess.vertexColors[tess.numVertexes][2] = iColor[2];
-	tess.vertexColors[tess.numVertexes][3] = f->drawIntensity * 255;      //----(SA)	mod for alpha blend rather than additive
-//	tess.vertexColors[tess.numVertexes][3] = 255;		//----(SA)	mod for alpha blend rather than additive
+	// Vertex 2 (Top-Right)
+	tess.xyz[tess.numVertexes][0]           = f->windowX + size;
+	tess.xyz[tess.numVertexes][1]           = f->windowY + size;
+	tess.texCoords[tess.numVertexes][0][0]  = 1.0f;
+	tess.texCoords[tess.numVertexes][0][1]  = 1.0f;
+	tess.vertexColors[tess.numVertexes][0]  = iColor[0];
+	tess.vertexColors[tess.numVertexes][1]  = iColor[1];
+	tess.vertexColors[tess.numVertexes][2]  = iColor[2];
+	tess.vertexColors[tess.numVertexes][3]  = alpha;
 	tess.numVertexes++;
 
-	tess.xyz[tess.numVertexes][0] = f->windowX + size;
-	tess.xyz[tess.numVertexes][1] = f->windowY - size;
-	tess.texCoords[tess.numVertexes][0][0] = 1;
-	tess.texCoords[tess.numVertexes][0][1] = 0;
-	tess.vertexColors[tess.numVertexes][0] = iColor[0];
-	tess.vertexColors[tess.numVertexes][1] = iColor[1];
-	tess.vertexColors[tess.numVertexes][2] = iColor[2];
-	tess.vertexColors[tess.numVertexes][3] = f->drawIntensity * 255;      //----(SA)	mod for alpha blend rather than additive
-//	tess.vertexColors[tess.numVertexes][3] = 255;		//----(SA)	mod for alpha blend rather than additive
+	// Vertex 3 (Bottom-Right)
+	tess.xyz[tess.numVertexes][0]           = f->windowX + size;
+	tess.xyz[tess.numVertexes][1]           = f->windowY - size;
+	tess.texCoords[tess.numVertexes][0][0]  = 1.0f;
+	tess.texCoords[tess.numVertexes][0][1]  = 0.0f;
+	tess.vertexColors[tess.numVertexes][0]  = iColor[0];
+	tess.vertexColors[tess.numVertexes][1]  = iColor[1];
+	tess.vertexColors[tess.numVertexes][2]  = iColor[2];
+	tess.vertexColors[tess.numVertexes][3]  = alpha;
 	tess.numVertexes++;
 
 	tess.indexes[tess.numIndexes++] = 0;
@@ -505,48 +484,34 @@ void RB_RenderFlare( flare_t *f ) {
 /*
 ==================
 RB_RenderFlares
-
-Because flares are simulating an occular effect, they should be drawn after
-everything (all views) in the entire frame has been drawn.
-
-Because of the way portals use the depth buffer to mark off areas, the
-needed information would be lost after each view, so we are forced to draw
-flares after each view.
-
-The resulting artifact is that flares in mirrors or portals don't dim properly
-when occluded by something in the main view, and portal flares that should
-extend past the portal edge will be overwritten.
 ==================
 */
 void RB_RenderFlares( void ) {
-	flare_t     *f;
-	flare_t     **prev;
+	flare_t  *f;
+	flare_t  **prev;
 	qboolean draw;
 
 	if ( !r_flares->integer ) {
 		return;
 	}
 
-	if(r_flareCoeff->modified)
-	{
+	if ( r_flareCoeff->modified ) {
 		R_SetFlareCoeff();
 		r_flareCoeff->modified = qfalse;
 	}
 
 	// Reset currentEntity to world so that any previously referenced entities
-	// don't have influence on the rendering of these flares (i.e. RF_ renderer flags).
+	// don't have influence on rendering flares.
 	backEnd.currentEntity = &tr.worldEntity;
-	backEnd.or = backEnd.viewParms.world;
+	backEnd.or            = backEnd.viewParms.world;
 
-	// (SA) turned light flares back on.  must evaluate problem id had with this
 	RB_AddDlightFlares();
 	RB_AddCoronaFlares();
 
-	// perform z buffer readback on each flare in this view
+	// Test flare z-buffer visibility and clean up inactive list items
 	draw = qfalse;
 	prev = &r_activeFlares;
 	while ( ( f = *prev ) != NULL ) {
-		// throw out any flares that weren't added last frame
 		if ( f->addedFrame < backEnd.viewParms.frameCount - 1 ) {
 			*prev = f->next;
 			f->next = r_inactiveFlares;
@@ -554,15 +519,13 @@ void RB_RenderFlares( void ) {
 			continue;
 		}
 
-		// don't draw any here that aren't from this scene / portal
-		f->drawIntensity = 0;
-		if ( f->frameSceneNum == backEnd.viewParms.frameSceneNum
-			 && f->inPortal == backEnd.viewParms.isPortal ) {
+		f->drawIntensity = 0.0f;
+		if ( f->frameSceneNum == backEnd.viewParms.frameSceneNum &&
+			 f->inPortal == backEnd.viewParms.isPortal ) {
 			RB_TestFlare( f );
-			if ( f->drawIntensity ) {
+			if ( f->drawIntensity > 0.0f ) {
 				draw = qtrue;
 			} else {
-				// this flare has completely faded out, so remove it from the chain
 				*prev = f->next;
 				f->next = r_inactiveFlares;
 				r_inactiveFlares = f;
@@ -574,7 +537,7 @@ void RB_RenderFlares( void ) {
 	}
 
 	if ( !draw ) {
-		return;     // none visible
+		return;     // None visible
 	}
 
 	if ( backEnd.viewParms.isPortal ) {
@@ -588,12 +551,12 @@ void RB_RenderFlares( void ) {
 	qglLoadIdentity();
 	qglOrtho( backEnd.viewParms.viewportX, backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth,
 			  backEnd.viewParms.viewportY, backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight,
-			  -99999, 99999 );
+			  -99999.0f, 99999.0f );
 
 	for ( f = r_activeFlares ; f ; f = f->next ) {
-		if ( f->frameSceneNum == backEnd.viewParms.frameSceneNum
-			 && f->inPortal == backEnd.viewParms.isPortal
-			 && f->drawIntensity ) {
+		if ( f->frameSceneNum == backEnd.viewParms.frameSceneNum &&
+			 f->inPortal == backEnd.viewParms.isPortal &&
+			 f->drawIntensity > 0.0f ) {
 			RB_RenderFlare( f );
 		}
 	}
@@ -602,4 +565,3 @@ void RB_RenderFlares( void ) {
 	qglMatrixMode( GL_MODELVIEW );
 	qglPopMatrix();
 }
-
