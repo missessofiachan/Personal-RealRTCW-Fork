@@ -98,6 +98,8 @@ flare_t r_flareStructs[MAX_FLARES];
 flare_t     *r_activeFlares, *r_inactiveFlares;
 
 int flareCoeff;
+float   flareCoeffFloat;
+float   flareCoeffSqrt;
 
 /*
 ==================
@@ -105,11 +107,14 @@ R_SetFlareCoeff
 ==================
 */
 static void R_SetFlareCoeff( void ) {
+    if ( r_flareCoeff->value <= 0.0f ) {
+        flareCoeffFloat = (float)atof( FLARE_STDCOEFF );
+    } else {
+        flareCoeffFloat = r_flareCoeff->value;
+    }
 
-	if(r_flareCoeff->value == 0.0f)
-		flareCoeff = atof(FLARE_STDCOEFF);
-	else
-		flareCoeff = r_flareCoeff->value;
+    flareCoeff     = (int)flareCoeffFloat;
+    flareCoeffSqrt = sqrtf( flareCoeffFloat );
 }
 
 /*
@@ -118,20 +123,19 @@ R_ClearFlares
 ==================
 */
 void R_ClearFlares( void ) {
-	int i;
+    int i;
 
-	memset( r_flareStructs, 0, sizeof( r_flareStructs ) );
-	r_activeFlares = NULL;
-	r_inactiveFlares = NULL;
+    memset( r_flareStructs, 0, sizeof( r_flareStructs ) );
+    r_activeFlares   = NULL;
+    r_inactiveFlares = NULL;
 
-	for ( i = 0 ; i < MAX_FLARES ; i++ ) {
-		r_flareStructs[i].next = r_inactiveFlares;
-		r_inactiveFlares = &r_flareStructs[i];
-	}
+    for ( i = 0 ; i < MAX_FLARES ; i++ ) {
+        r_flareStructs[i].next = r_inactiveFlares;
+        r_inactiveFlares       = &r_flareStructs[i];
+    }
 
-	R_SetFlareCoeff();
+    R_SetFlareCoeff();
 }
-
 
 /*
 ==================
