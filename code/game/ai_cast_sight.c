@@ -661,26 +661,8 @@ void AICast_SightUpdate( int numchecks ) {
 			continue;
 		}
 
-		// Pre-cache head tags on main thread so worker threads never invoke trap_GetTag
-		if ( ( level.lastLoadTime < level.time - 4000 ) && ( srcent->r.svFlags & SVF_CASTAI ) ) {
-			if ( clientHeadTagTimes[srcent->s.number] != level.time ) {
-				orientation_t tempOr;
-				if ( trap_GetTag( srcent->s.number, "tag_head", &tempOr ) ) {
-					VectorCopy( tempOr.origin, clientHeadTags[srcent->s.number].origin );
-					VectorMA( clientHeadTags[srcent->s.number].origin, 12, tempOr.axis[2], clientHeadTags[srcent->s.number].origin );
-					memcpy( clientHeadTags[srcent->s.number].axis, tempOr.axis, sizeof( tempOr.axis ) );
-					clientHeadTagTimes[srcent->s.number] = level.time;
-				} else if ( srcent->client ) {
-					vec3_t eyePos, viewAng;
-					VectorCopy( srcent->client->ps.origin, eyePos );
-					eyePos[2] += srcent->client->ps.viewheight;
-					VectorCopy( srcent->client->ps.viewangles, viewAng );
-					VectorCopy( eyePos, clientHeadTags[srcent->s.number].origin );
-					AnglesToAxis( viewAng, clientHeadTags[srcent->s.number].axis );
-					clientHeadTagTimes[srcent->s.number] = level.time;
-				}
-			}
-		}
+		// make sure we are using the right AAS data for this entity (one's that don't get set will default to the player's AAS data)
+		trap_AAS_SetCurrentWorld( cs->aasWorldIndex );
 
 		for (   destcount = 0, dest = 0, destent = g_entities;
 				destent == g_entities;  // only check the player
@@ -725,30 +707,18 @@ void AICast_SightUpdate( int numchecks ) {
 				continue;
 			}
 
-			if ( !( destent->flags & FL_NOTARGET ) ) {
-				jobs[jobCount].srcNum = srcent->s.number;
-				jobs[jobCount].destNum = destent->s.number;
-				jobs[jobCount].isVisible = qfalse;
-				trap_Sys_QueueJob( AICast_CheckVisibility_Job, &jobs[jobCount] );
-				jobCount++;
-			} else {
+			// check for visibility
+			if (    !( destent->flags & FL_NOTARGET )
+					&&  ( AICast_CheckVisibility( srcent, destent ) ) ) {
+				// record the sighting
+				AICast_UpdateVisibility( srcent, destent, qtrue, qtrue );
+			} else
+			{
 				AICast_UpdateNonVisibility( srcent, destent, qtrue );
 			}
 		}
 	}
 
-	if ( jobCount > 0 ) {
-		trap_Sys_WaitJobs();
-		for ( int j = 0; j < jobCount; j++ ) {
-			gentity_t *s = &g_entities[jobs[j].srcNum];
-			gentity_t *d = &g_entities[jobs[j].destNum];
-			if ( jobs[j].isVisible ) {
-				AICast_UpdateVisibility( s, d, qtrue, qtrue );
-			} else {
-				AICast_UpdateNonVisibility( s, d, qtrue );
-			}
-		}
-	}
 
 	// Now do the normal timeslice checks
 	for (   srccount = 0, src = lastsrc, srcent = &g_entities[lastsrc];

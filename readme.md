@@ -35,7 +35,11 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **Model Bounds Loading Fix**: Corrected the modelbounds parsing logic on world asset clip layers, ensuring projectile hitboxes align perfectly with physics shapes at all angles.
 
 ### 🧵 Multi-Threaded Architecture & Parallelization (`gp_jobsystem`)
+* **Parallel PVS Leaf Visibility Testing (`tr_world.c`)**: Multi-threads potential visibility set (PVS) leaf node array checks across job system workers during scene construction (`R_MarkLeaves`).
+* **Parallel Brush Model Dynamic Light Culling (`tr_light.c`)**: Partitions dynamic light plane equations across non-overlapping surface chunks for complex brush models (`R_DlightBmodel`).
+* **VM Engine-Game Syscall Extensions (`g_public.h` / `cg_syscalls.asm` / `g_syscalls.asm`)**: Exposes job system queuing (`trap_Sys_QueueJob`, `trap_Sys_WaitJobs`) across native and QVM module boundaries with aligned syscall assembly equates.
 * **Parallel CPU Skeletal Vertex Skinning (`tr_animation.c`)**: Partitions large skeletal model surfaces (`numVerts > 256`) into 256-vertex chunks, distributing skinning across background workers to maximize high refresh-rate monitors.
+
 * **Thread-Isolated Memory Alignment**: Configures concurrent skinning chunks to write into isolated target blocks to eliminate false cache-line sharing, optimizing L1/L2 cache efficiency.
 * **Asynchronous Background Asset Loading (`snd_openal.c` / `snd_codec.c`)**: Offloads file loading and WAV/OGG/Opus decompression tasks to worker threads using a thread-safe custom allocator (`S_CodecAllocateTemp`).
 
