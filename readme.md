@@ -12,7 +12,7 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 | **Collision & Maps** | Physics Hulls & Spatial Queries | `cm_load.c`, `cm_trace.c`, Branchless Box Optimization |
 | **Multithreading** | Parallelization & Job Dispatching | `gp_jobsystem`, Work Stealing, Batched Submissions, Skeletal Skinning |
 | **Audio Pipeline** | Spatial Audio & Reverb Simulation | OpenAL EFX, EAX, 128-bit SSE Audio Mixer |
-| **Renderer & Shading** | Cinematic Visuals & Tech Modernization | Z-Fail (Carmack's Reverse), Pseudo-Soft Shadows, PBR Attenuation, Flare Precomputation |
+| **Renderer & Shading** | Cinematic Visuals & Tech Modernization | Full-Body MDS Character Shadows, 1st-Person Fallback, Z-Fail Stencil, Pseudo-Soft Shadows, PBR Attenuation |
 | **QVM Compiler** | Execution Performance & Security | `vm_x86.c`, `vm.c`, x86_64 JIT, W^X Memory Hardening |
 | **Memory Management** | Low-Latency Allocation | `mimalloc`, Eager Page Commits, 2MB Huge Pages |
 
@@ -57,8 +57,12 @@ This repository is a modernized, high-performance fork of the **Return to Castle
 * **X-Macro API Bindings**: Consolidates dynamically loaded function pointer declarations, definitions, loading, and unloading routines for OpenAL and cURL using unified compile-time X-Macros.
 * **SIMD Audio Mixer**: Employs 128-bit SSE lanes and saturation packing (`_mm_packs_epi32`) to mix up to 4 stereo streams in parallel without branching, completely eliminating audio cracking.
 
-### 💡 Cinematic Rendering & Lighting Pipeline (`tr_shadows.c` / `tr_light.c` / `tr_bloom.c` / `tr_flares.c`)
+### 💡 Cinematic Rendering & Lighting Pipeline (`tr_shadows.c` / `tr_light.c` / `tr_bloom.c` / `tr_flares.c` / `tr_animation.c`)
 
+* **Full-Body Character & NPC Shadow Pass (`tr_animation.c` / `tr_mesh.c` / `tr_model_iqm.c` / `tr_cmesh.c`)**: Added missing shadow surface generation passes to `.mds` character model rendering (`R_AddAnimSurfaces`) and expanded shader sort evaluation beyond `SS_OPAQUE` to `shader->sort <= SS_BANNER`. This allows alpha-tested uniforms, clothing, and skinned body parts on enemy guards and NPCs to cast complete, full-body shadows instead of just head/weapon props.
+* **1st-Person Player Shadow Fallback (`cg_players.c`)**: Automatically attaches `RF_SHADOW_PLANE` to the local player in first-person mode when Stencil Shadows are active (`cg_shadows 2`). This projects a clean Planar Shadow under the player's feet while bypassing camera near-plane clip crashes caused by 3D stencil volume extrusions.
+* **Built-In Projection Shader & Soft Alpha Calibrations (`tr_shader.c`)**: Created a built-in fallback for `projectionShadow` with `CGEN_CONST`/`AGEN_CONST` color generation, polygon offset depth bias, and calibrated 30% alpha blending (`constantColor[3] = 75`), softening overlapping mesh projections into natural ambient contact shadows.
+* **Auto-Promoted OpenGL Stencil Allocation (`sdl_glimp.c`)**: Auto-requests at least 8-bit stencil framebuffers during OpenGL context creation whenever `r_shadows 2` is enabled, preventing silent stencil allocation failures.
 * **Carmack's Reverse (Z-Fail Stencil Shadows)**: Switched the volumetric shadow rendering pipeline from Z-Pass to Z-Fail culling to prevent the entire screen from glitching when the camera clips inside a shadow volume.
 * **Volumetric Contact Hardening (Pseudo-Soft Shadows)**: Injects a high-frequency, vertex-indexed dither pattern into the light extrusion vectors, creating realistic light penumbras that blur naturally over distance.
 * **Cinematic Ambient Shadow Blending**: Replaces the hardcoded multiplicative gray blend with an alpha-blended, slate-blue tinted shadow pass, allowing shadows to absorb environmental ambient colors.
