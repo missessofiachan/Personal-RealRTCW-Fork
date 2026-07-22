@@ -398,9 +398,11 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 	// cull the entire model if merged bounding box of both frames
 	// is outside the view frustum.
 	//
-	cull = R_CullModel( header, ent );
-	if ( cull == CULL_OUT ) {
-		return;
+	if ( !personalModel || r_shadows->integer == 0 ) {
+		cull = R_CullModel( header, ent );
+		if ( cull == CULL_OUT ) {
+			return;
+		}
 	}
 
 	//
@@ -467,13 +469,12 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 
 		// we will add shadows even if the main object isn't visible in the view
 
-		// stencil shadows can't do personal models unless I polyhedron clip
+		// stencil shadows can't do personal models unless polyhedra clipped
 		if ( !personalModel
 			 && r_shadows->integer == 2
 			 && fogNum == 0
 			 && !( ent->e.renderfx & ( RF_NOSHADOW | RF_DEPTHHACK ) )
-			 && shader->sort == SS_OPAQUE ) {
-// GR - tessellate according to model capabilities
+			 && shader->sort <= SS_BANNER ) {
 			R_AddDrawSurf( (void *)surface, tr.shadowShader, 0, qfalse, tr.currentModel->ATI_tess );
 		}
 
@@ -481,7 +482,7 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 		if ( r_shadows->integer == 3
 			&& fogNum == 0
 			&& (ent->e.renderfx & RF_SHADOW_PLANE )
-			&& shader->sort == SS_OPAQUE ) {
+			&& shader->sort <= SS_BANNER ) {
 			R_AddDrawSurf( (void *)surface, tr.projectionShadowShader, 0, qfalse, tr.currentModel->ATI_tess );
 		}
 

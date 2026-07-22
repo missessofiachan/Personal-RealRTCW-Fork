@@ -336,11 +336,13 @@ void R_AddAnimSurfaces( trRefEntity_t *ent ) {
 
 	//
 	// cull the entire model if merged bounding box of both frames
-	// is outside the view frustum.
+	// is outside the view frustum (unless personalModel is casting shadows).
 	//
-	cull = R_CullModel( header, ent );
-	if ( cull == CULL_OUT ) {
-		return;
+	if ( !personalModel || r_shadows->integer == 0 ) {
+		cull = R_CullModel( header, ent );
+		if ( cull == CULL_OUT ) {
+			return;
+		}
 	}
 
 	//
@@ -396,6 +398,23 @@ void R_AddAnimSurfaces( trRefEntity_t *ent ) {
 			}
 		} else {
 			shader = R_GetShaderByHandle( surface->shaderIndex );
+		}
+
+		// stencil shadows can't do personal models unless polyhedra clipped
+		if ( !personalModel
+			 && r_shadows->integer == 2
+			 && fogNum == 0
+			 && !( ent->e.renderfx & ( RF_NOSHADOW | RF_DEPTHHACK ) )
+			 && shader->sort <= SS_BANNER ) {
+			R_AddDrawSurf( (void *)surface, tr.shadowShader, 0, qfalse, ATI_TESS_TRUFORM );
+		}
+
+		// projection shadows work fine with personal models
+		if ( r_shadows->integer == 3
+			&& fogNum == 0
+			&& (ent->e.renderfx & RF_SHADOW_PLANE )
+			&& shader->sort <= SS_BANNER ) {
+			R_AddDrawSurf( (void *)surface, tr.projectionShadowShader, 0, qfalse, ATI_TESS_TRUFORM );
 		}
 
 		// don't add third_person objects if not viewing through a portal
@@ -1653,9 +1672,11 @@ void R_MDRAddAnimSurfaces( trRefEntity_t *ent ) {
 	// cull the entire model if merged bounding box of both frames
 	// is outside the view frustum.
 	//
-	cull = R_MDRCullModel (header, ent);
-	if ( cull == CULL_OUT ) {
-		return;
+	if ( !personalModel || r_shadows->integer == 0 ) {
+		cull = R_MDRCullModel (header, ent);
+		if ( cull == CULL_OUT ) {
+			return;
+		}
 	}	
 
 	// figure out the current LOD of the model we're rendering, and set the lod pointer respectively.
@@ -1709,12 +1730,12 @@ void R_MDRAddAnimSurfaces( trRefEntity_t *ent ) {
 
 		// we will add shadows even if the main object isn't visible in the view
 
-		// stencil shadows can't do personal models unless I polyhedron clip
+		// stencil shadows can't do personal models unless polyhedra clipped
 		if ( !personalModel
-		        && r_shadows->integer == 2
+			&& r_shadows->integer == 2
 			&& fogNum == 0
 			&& !(ent->e.renderfx & ( RF_NOSHADOW | RF_DEPTHHACK ) )
-			&& shader->sort == SS_OPAQUE )
+			&& shader->sort <= SS_BANNER )
 		{
 			R_AddDrawSurf( (void *)surface, tr.shadowShader, 0, qfalse, ATI_TESS_TRUFORM );
 		}
@@ -1723,7 +1744,7 @@ void R_MDRAddAnimSurfaces( trRefEntity_t *ent ) {
 		if ( r_shadows->integer == 3
 			&& fogNum == 0
 			&& (ent->e.renderfx & RF_SHADOW_PLANE )
-			&& shader->sort == SS_OPAQUE )
+			&& shader->sort <= SS_BANNER )
 		{
 			R_AddDrawSurf( (void *)surface, tr.projectionShadowShader, 0, qfalse, ATI_TESS_TRUFORM );
 		}
