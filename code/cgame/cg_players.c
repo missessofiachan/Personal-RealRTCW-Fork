@@ -4551,7 +4551,7 @@ void CG_Player( centity_t *cent ) {
 		renderfx = RF_THIRD_PERSON;         // only draw in mirrors
 	}
 
-	if ( cg_shadows.integer == 3 && shadow ) {
+	if ( ( cg_shadows.integer == 3 || ( cg_shadows.integer == 2 && cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) ) && shadow ) {
 		renderfx |= RF_SHADOW_PLANE;
 	}
 	renderfx |= RF_LIGHTING_ORIGIN;         // use the same origin for all

@@ -479,7 +479,7 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 		}
 
 		// projection shadows work fine with personal models
-		if ( r_shadows->integer == 3
+		if ( r_shadows->integer >= 2
 			&& fogNum == 0
 			&& (ent->e.renderfx & RF_SHADOW_PLANE )
 			&& shader->sort <= SS_BANNER ) {
