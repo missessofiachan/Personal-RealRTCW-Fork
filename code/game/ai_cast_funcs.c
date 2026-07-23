@@ -2890,7 +2890,6 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 		 ( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].visible_pos ) > 100 ) &&
 		 ( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].visible_pos ) < 1400 ) ) {
 		// try and flush them out with a grenade
-		//G_Printf("pineapple?\n");
 		return AIFunc_GrenadeFlushStart( cs );
 	} else if ( ( lastGrenadeFlush > level.time || lastGrenadeFlush < level.time - 5000 ) &&
 				( cs->aiState >= AISTATE_COMBAT ) &&
@@ -2903,7 +2902,6 @@ char *AIFunc_BattleChase( cast_state_t *cs ) {
 				( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].visible_pos ) > 100 ) &&
 				( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].visible_pos ) < 1400 ) ) {
 		// try and flush them out with a grenade
-		//G_Printf("pineapple?\n");
 		return AIFunc_GrenadeFlushStart( cs );
 	}
 	//
@@ -4926,7 +4924,6 @@ char *AIFunc_Battle( cast_state_t *cs ) {
 		 ( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].real_visible_pos ) > 100 ) &&
 		 ( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].real_visible_pos ) < 2000 ) ) {
 		// try and flush them out with a grenade
-		//G_Printf("pineapple?\n");
 		return AIFunc_GrenadeFlushStart( cs );
 	}
 	if ( ( lastGrenadeFlush > level.time || lastGrenadeFlush < level.time - 7000 ) &&
@@ -4940,7 +4937,6 @@ char *AIFunc_Battle( cast_state_t *cs ) {
 		 ( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].real_visible_pos ) > 100 ) &&
 		 ( Distance( cs->bs->origin, cs->vislist[cs->enemyNum].real_visible_pos ) < 2000 ) ) {
 		// try and flush them out with a grenade
-		//G_Printf("pineapple?\n");
 		return AIFunc_GrenadeFlushStart( cs );
 	}
 	//

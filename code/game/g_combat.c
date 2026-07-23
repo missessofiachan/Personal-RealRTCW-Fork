@@ -332,19 +332,6 @@ char    *modNames[] = {
 };
 
 
-void *remove_powerup_after_delay2(void *arg) {
-    gentity_t *other = (gentity_t *)arg;
-
-    // Sleep for 30 seconds
-    sleep(30);
-
-    // Remove the FL_NOTARGET flag
-    other->flags &= ~FL_NOTARGET;
-
-    return NULL;
-}
-
-
 /*
 ==================
 player_die_secondchance
@@ -371,12 +358,10 @@ void player_die_secondchance( gentity_t *self, gentity_t *inflictor, gentity_t *
 	// Grant the player 200 health points
     self->health = 200;
 
-	 // Grant the player invisibility powerup for a limited time (e.g., 30 seconds)
-    self->client->ps.powerups[PW_INVIS] = level.time + 30000;
+	// Grant the player invisibility powerup for a limited time
+    self->client->ps.powerups[PW_INVIS] = level.time + SECONDCHANCE_INVIS_DURATION;
     G_AddPredictableEvent( self, EV_ITEM_PICKUP, BG_FindItemForClassName( "item_invis" ) - bg_itemlist );
 	self->flags |= FL_NOTARGET;
-    pthread_t thread_id;
-    pthread_create(&thread_id, NULL, remove_powerup_after_delay2, (void *)self);
 
 	// Remove perks depending on Second Chance level
 	if (self->client->ps.perks[PERK_SECONDCHANCE] >= 2)

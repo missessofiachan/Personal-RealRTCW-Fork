@@ -37,16 +37,9 @@ If you have questions concerning this license or the applicable additional terms
  *				movers and respawn apropriately.
  *
 */
-#include <pthread.h>
-#include <unistd.h>
-
 #include "g_local.h"
-
 #include "g_survival.h"
-
 #include "../steam/steam.h"
-
-
 
 #define RESPAWN_SP          -1
 #define RESPAWN_KEY         4
@@ -61,25 +54,11 @@ If you have questions concerning this license or the applicable additional terms
 #define RESPAWN_PARTIAL     998     // for multi-stage ammo/health
 #define RESPAWN_PARTIAL_DONE 999    // for multi-stage ammo/health
 
-
 //======================================================================
 
 weapon_t GetComplexWeapon( weapon_t weapon );
 weapon_t GetSimpleWeapon( weapon_t weapon );
 qboolean IsWeaponComplex( weapon_t weapon );
-
-
-void *remove_powerup_after_delay(void *arg) {
-    gentity_t *other = (gentity_t *)arg;
-
-    // Sleep for 30 seconds
-    sleep(30);
-
-    // Remove the FL_NOTARGET flag
-    other->flags &= ~FL_NOTARGET;
-
-    return NULL;
-}
 
 
 int Pickup_Powerup( gentity_t *ent, gentity_t *other ) {
@@ -135,13 +114,9 @@ int Pickup_Powerup( gentity_t *ent, gentity_t *other ) {
 		}
 	}
 
-	// DIRTY HACK!!!!! If the invisibility powerup is picked up, set FL_NOTARGET and start a timer to remove it
-    if (ent->item->giTag == PW_INVIS) {
-        other->flags |= FL_NOTARGET;
-
-        pthread_t thread_id;
-        pthread_create(&thread_id, NULL, remove_powerup_after_delay, (void *)other);
-    }
+	if (ent->item->giTag == PW_INVIS) {
+		other->flags |= FL_NOTARGET;
+	}
 
 	if (!g_cheats.integer &&
 		(other->client->ps.powerups[PW_BATTLESUIT_SURV] > level.time) &&
@@ -567,7 +542,7 @@ void UseHoldableItem( gentity_t *ent, int item ) {
 
 
 			VectorSubtract(targ->r.currentOrigin, ent->r.currentOrigin, delta);
-			if (VectorLength(delta) > radius)
+			if (DotProduct(delta, delta) > radius * radius)
 				continue;
 
 			EMP_Apply(ent, targ, duration);

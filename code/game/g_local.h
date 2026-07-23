@@ -51,6 +51,8 @@ If you have questions concerning this license or the applicable additional terms
 #define REWARD_SPRITE_TIME  2000
 
 #define INTERMISSION_DELAY_TIME 1000
+#define MOVER_STARTUP_GRACE_MS  4000        // msec startup grace period to suppress initial door sounds
+#define SECONDCHANCE_INVIS_DURATION 30000       // duration in ms for Second Chance powerup
 
 
 // gentity->flags

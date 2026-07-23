@@ -1376,7 +1376,7 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 		kicked = soft = qfalse;
 	}
 
-	if ( level.time <= 4000 ) { // hack.  don't play door sounds if in the first /four/ seconds of game (FIXME: TODO: THIS IS STILL A HACK)
+	if ( level.time <= MOVER_STARTUP_GRACE_MS ) { // suppress door sounds during initial map startup
 		nosound = qtrue;
 	}
 

@@ -245,16 +245,18 @@ int AICast_ScanForEnemies( cast_state_t *cs, int *enemies ) {
 		return 0;
 	}
 
-	// sort the enemies by distance
+#define DIST_SQ_SENTINEL    1e18f  // sentinel: enemy is skipped during sort
+
+	// sort the enemies by distance (use squared distance to avoid unnecessary sqrt)
 	for ( i = 0; i < enemyCount; i++ ) {
-		distances[i] = Distance( cs->bs->origin, g_entities[enemies[i]].client->ps.origin );
+		distances[i] = DistanceSquared( cs->bs->origin, g_entities[enemies[i]].client->ps.origin );
 		if ( !distances[i] ) {
 			G_Printf( "WARNING: zero distance between enemies:\n%s at %s, %s at %s\n", g_entities[cs->entityNum].aiName, vtos( cs->bs->origin ), g_entities[enemies[i]].aiName, vtos( g_entities[enemies[i]].client->ps.origin ) );
-			distances[i] = 999998;  // try to ignore them (HACK)
+			distances[i] = DIST_SQ_SENTINEL;
 		}
 	}
 	for ( j = 0; j < enemyCount; j++ ) {
-		lastDist = 999999;
+		lastDist = DIST_SQ_SENTINEL;
 		best = -1;
 		for ( i = 0; i < enemyCount; i++ ) {
 			if ( distances[i] && distances[i] < lastDist ) {
@@ -1092,7 +1094,7 @@ qboolean AICast_WeaponUsable( cast_state_t *cs, int weaponNum ) {
 			break;
 		case AICHAR_LOPER:  // loper leap attack
 		case AICHAR_LOPER_SPECIAL:
-			if ( cs->bs->areanum && VectorLength( cs->bs->velocity ) > 1 ) {    // if we are in a valid area, and are persuing, then leave a delay
+			if ( cs->bs->areanum && VectorLengthSquared( cs->bs->velocity ) > 1.0f ) {    // if we are in a valid area, and are persuing, then leave a delay
 				// if there isn't a direct trace to our enemy, then fail
 				if ( cs->enemyNum >= 0 ) {
 					trace_t trace;
@@ -1384,7 +1386,7 @@ int AICast_WantsToTakeCover( cast_state_t *cs, qboolean attacking ) {
 	}
 	//
 	// Dodge enemy aim?
-	if ( cs->attributes[AGGRESSION] < 1.0 && attacking && ( cs->enemyNum >= 0 ) && ( g_entities[cs->enemyNum].client->ps.weapon ) && ( cs->attributes[TACTICAL] > 0.5 ) && ( cs->aiFlags & AIFL_ROLL_ANIM ) && ( VectorLength( cs->bs->cur_ps.velocity ) < 1 ) ) {
+	if ( cs->attributes[AGGRESSION] < 1.0 && attacking && ( cs->enemyNum >= 0 ) && ( g_entities[cs->enemyNum].client->ps.weapon ) && ( cs->attributes[TACTICAL] > 0.5 ) && ( cs->aiFlags & AIFL_ROLL_ANIM ) && ( VectorLengthSquared( cs->bs->cur_ps.velocity ) < 1.0f ) ) {
 		vec3_t aim, enemyVec;
 		// are they aiming at us?
 		AngleVectors( g_entities[cs->enemyNum].client->ps.viewangles, aim, NULL, NULL );
@@ -2085,14 +2087,14 @@ int AICast_SafeMissileFire( gentity_t *ent, int duration, int enemyNum, vec3_t e
 				continue;
 			}
 			if ( AICast_SameTeam( AICast_GetCastState( selfNum ), trav->s.number ) ) {
-				if ( Distance( org, trav->r.currentOrigin ) < ent->splashRadius ) {
+				if ( DistanceSquared( org, trav->r.currentOrigin ) < ent->splashRadius * ent->splashRadius ) {
 					return -1;
 				}
 			}
 		}
 	}
 	// if it overshot the mark
-	if ( !rval && Distance( g_entities[ent->r.ownerNum].r.currentOrigin, org ) > Distance( g_entities[ent->r.ownerNum].r.currentOrigin, enemyPos ) ) {
+	if ( !rval && DistanceSquared( g_entities[ent->r.ownerNum].r.currentOrigin, org ) > DistanceSquared( g_entities[ent->r.ownerNum].r.currentOrigin, enemyPos ) ) {
 		return -2;  // so the AI can try aiming down a bit next time
 	}
 	//

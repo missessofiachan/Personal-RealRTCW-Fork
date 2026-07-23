@@ -960,10 +960,10 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 	newXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals ) + ( newBase * numVerts * 4 );
 	newNormals = newXyz + 3;
 
-	hasComp = ( surf->numCompFrames > 0 );
+	hasComp = ( surf->numCompFrames > 0 && surf->ofsFrameCompFrames != 0 && surf->ofsXyzCompressed != 0 );
 	if ( hasComp ) {
 		newComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + backEnd.currentEntity->e.frame );
-		if ( *newComp >= 0 ) {
+		if ( newComp && *newComp >= 0 ) {
 			newXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed ) + ( *newComp * numVerts );
 		}
 	}
@@ -973,7 +973,7 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 
 	if ( backlerp == 0.0f ) {
 		// Hoisted compression check branch out of the execution loop path
-		if ( hasComp && *newComp >= 0 ) {
+		if ( hasComp && newXyzComp != NULL ) {
 			for ( vertNum = 0 ; vertNum < numVerts ; vertNum++, newXyz += 4, newNormals += 4, outXyz += 4, outNormal += 4 ) {
 				outXyz[0] = newXyz[0] * newXyzScale;
 				outXyz[1] = newXyz[1] * newXyzScale;
@@ -1006,7 +1006,7 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 
 		if ( hasComp ) {
 			oldComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + backEnd.currentEntity->e.oldframe );
-			if ( *oldComp >= 0 ) {
+			if ( oldComp && *oldComp >= 0 ) {
 				oldXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed ) + ( *oldComp * numVerts );
             }
 		}
@@ -1014,8 +1014,8 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 		oldXyzScale = MD3_XYZ_SCALE * backlerp;
 		oldNormalScale = backlerp;
 
-		qboolean useNewComp = (hasComp && *newComp >= 0);
-		qboolean useOldComp = (hasComp && *oldComp >= 0);
+		qboolean useNewComp = (hasComp && newXyzComp != NULL);
+		qboolean useOldComp = (hasComp && oldXyzComp != NULL);
 
 		for ( vertNum = 0 ; vertNum < numVerts ; vertNum++, oldXyz += 4, newXyz += 4, oldNormals += 4, newNormals += 4, outXyz += 4, outNormal += 4 ) {
 			vec3_t uncompressedOldNormal, uncompressedNewNormal;

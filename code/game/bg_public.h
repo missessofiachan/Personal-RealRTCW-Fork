@@ -41,6 +41,7 @@ If you have questions concerning this license or the applicable additional terms
 #define	GAME_VERSION		BASEGAME "-1"
 
 #define DEFAULT_GRAVITY     800
+#define GRAVITY_LOW_SCALE   0.3f    // used for TR_GRAVITY_LOW / TR_GRAVITY_FLOAT trajectory types
 #define GIB_HEALTH          -120 // was -40 Increased in RealRTCW due to the increased grenade damage.
 #define ARMOR_PROTECTION    0.66 
 

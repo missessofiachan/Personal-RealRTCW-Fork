@@ -264,6 +264,14 @@ TODO
 */
 qboolean Sys_LowPhysicalMemory( void )
 {
+	long pages = sysconf( _SC_PHYS_PAGES );
+	long page_size = sysconf( _SC_PAGESIZE );
+	if ( pages > 0 && page_size > 0 ) {
+		unsigned long long totalRam = (unsigned long long)pages * page_size;
+		if ( totalRam < (unsigned long long)512 * 1024 * 1024 ) {
+			return qtrue;
+		}
+	}
 	return qfalse;
 }
 

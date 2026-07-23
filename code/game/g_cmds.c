@@ -2010,6 +2010,7 @@ void Cmd_ClientDamage_f( gentity_t *clent ) {
 
 	if ( trap_Argc() != 4 ) {
 		G_Printf( "ClientDamage command issued with incorrect number of args\n" );
+		return;
 	}
 
 	trap_Argv( 1, s, sizeof( s ) );
@@ -2020,6 +2021,11 @@ void Cmd_ClientDamage_f( gentity_t *clent ) {
 
 	trap_Argv( 3, s, sizeof( s ) );
 	id = atoi( s );
+
+	if ( entnum < 0 || entnum >= MAX_GENTITIES || enemynum < 0 || enemynum >= MAX_GENTITIES ) {
+		G_Printf( "ClientDamage: invalid entity index\n" );
+		return;
+	}
 
 	ClientDamage( clent, entnum, enemynum, id );
 }

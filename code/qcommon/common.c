@@ -1602,6 +1602,10 @@ void Hunk_FreeTempMemory( void *buf ) {
 	hunkHeader_t    *hdr;
 	int alignedHeaderSize;
 
+	if ( !buf ) {
+		return;
+	}
+
 	if ( s_hunkData == NULL ) {
 		Z_Free( buf );
 		return;
@@ -1618,7 +1622,8 @@ void Hunk_FreeTempMemory( void *buf ) {
 #ifdef USE_MULTI_SEGMENT
 		ZONE_UNLOCK( &g_hunkSpinlock );
 #endif
-		Com_Error( ERR_FATAL, "Hunk_FreeTempMemory: bad magic verification key" );
+		Com_Printf( "Hunk_FreeTempMemory: bad magic verification key (0x%x)\n", hdr->magic );
+		return;
 	}
 
 	hdr->magic = HUNK_FREE_MAGIC;

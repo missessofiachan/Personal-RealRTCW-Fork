@@ -352,6 +352,7 @@ void RB_ProjectionShadowDeform( void ) {
 	float h;
 	vec3_t ground;
 	vec3_t light;
+	float groundDist;
 	float d;
 	vec3_t lightDir;
 	float shadowPlaneZ;
@@ -367,6 +368,8 @@ void RB_ProjectionShadowDeform( void ) {
 		shadowPlaneZ = backEnd.or.origin[2];
 	}
 
+	groundDist = backEnd.or.origin[2] - shadowPlaneZ;
+
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 	d = DotProduct( lightDir, ground );
 	// don't let the shadows get too long or go negative
@@ -381,8 +384,10 @@ void RB_ProjectionShadowDeform( void ) {
 	light[2] = lightDir[2] * d;
 
 	for ( i = 0; i < tess.numVertexes; i++, xyz += 4 ) {
-		// Calculate precise height of vertex above shadowPlaneZ
-		h = DotProduct( xyz, ground ) - shadowPlaneZ;
+		h = DotProduct( xyz, ground ) + groundDist;
+		if ( h < 0.0f ) {
+			h = 0.0f;
+		}
 
 		xyz[0] -= light[0] * h;
 		xyz[1] -= light[1] * h;
