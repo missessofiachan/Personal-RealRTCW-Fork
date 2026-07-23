@@ -3746,14 +3746,20 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 
 	VectorClear(fovOffset);
 
+	float fovVal = cg.fov;
+	if ( cg_gunFov.value > 0 ) {
+		float baseFov = ( cg_fov.value > 0 ) ? cg_fov.value : 90.0f;
+		fovVal = cg_gunFov.value * ( cg.fov / baseFov );
+	}
+
 	if ( cg_fixedAspect.integer ) {
 		fovOffset[2] = 0;
-	} else if ( cg.fov > 90 ) {
+	} else if ( fovVal > 90 ) {
 		// drop gun lower at higher fov
-		fovOffset[2] = -0.2 * ( cg.fov - 90 ) * cg.refdef.fov_x / cg.fov;
-	} else if ( cg.fov < 90 ) {
+		fovOffset[2] = -0.2 * ( fovVal - 90 ) * cg.refdef.fov_x / fovVal;
+	} else if ( fovVal < 90 ) {
 		// move gun forward at lower fov
-		fovOffset[0] = -0.2 * ( cg.fov - 90 ) * cg.refdef.fov_x / cg.fov;
+		fovOffset[0] = -0.2 * ( fovVal - 90 ) * cg.refdef.fov_x / fovVal;
 	} else if ( cg_fov.integer > 90 ) {
 		// old auto adjust
 		fovOffset[2] = -0.2 * ( cg_fov.integer - 90 );

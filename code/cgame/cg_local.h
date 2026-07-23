@@ -1847,6 +1847,7 @@ extern vmCvar_t cg_autoswitch;
 extern vmCvar_t cg_ignore;
 extern vmCvar_t cg_simpleItems;
 extern vmCvar_t cg_fov;
+extern vmCvar_t cg_gunFov;
 extern vmCvar_t cg_fixedAspect;
 extern vmCvar_t cg_fixedAspectFOV;
 extern vmCvar_t cg_drawCheckpoint;

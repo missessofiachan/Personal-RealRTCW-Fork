@@ -410,7 +410,7 @@ void R_AddAnimSurfaces( trRefEntity_t *ent ) {
 		}
 
 		// projection shadows work fine with personal models, lamps, and map props
-		if ( r_shadows->integer >= 1
+		if ( r_shadows->integer == 3
 			&& fogNum == 0
 			&& !(ent->e.renderfx & RF_DEPTHHACK)
 			&& shader->sort <= SS_BANNER ) {
@@ -1741,7 +1741,7 @@ void R_MDRAddAnimSurfaces( trRefEntity_t *ent ) {
 		}
 
 		// projection shadows work fine with personal models, lamps, and map props
-		if ( r_shadows->integer >= 1
+		if ( r_shadows->integer == 3
 			&& fogNum == 0
 			&& !(ent->e.renderfx & RF_DEPTHHACK)
 			&& shader->sort <= SS_BANNER )

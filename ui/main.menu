@@ -4298,6 +4298,26 @@ itemDef
 		mouseexit { hide slider_message }
     }
 	
+		itemDef {
+		name crosshair
+		group options
+		type ITEM_TYPE_SLIDER
+		text "GUN FOV"
+		cvarfloat "cg_gunFov" 0 0 120
+		rect 300 335 290 12
+		textalign ITEM_ALIGN_RIGHT
+		textfont UI_FONT_BIG
+		textalignx 142
+		textaligny 10
+		textscale .23
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07            
+		forecolor 1 1 1 1
+		visible 0 
+		mouseenter { show slider_message }
+		mouseexit { hide slider_message }
+    }
+	
 	
 		itemDef {
 		name crosshair
@@ -4305,7 +4325,7 @@ itemDef
 		type ITEM_TYPE_YESNO
 		text "@GM_DRAWGUN"
 		cvar "cg_drawGun"
-		rect 300 335 290 12
+		rect 300 350 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
 		textalignx 142
@@ -4324,7 +4344,7 @@ itemDef
 		text "@GM_VIEWPOS"
 		cvar "cg_gunposlock"
 		cvarFloatList { "@GM_VIEWREALRTCW" 1 "@GM_VIEWQUAKE" 3	}
-		rect 300 350 290 12
+		rect 300 365 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
 		textalignx 142
@@ -4342,7 +4362,7 @@ itemDef
 		type ITEM_TYPE_YESNO
 		text "@GM_BOBBING"
 		cvar "cg_bobbing"
-		rect 300 365 290 12
+		rect 300 380 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
 		textalignx 142
@@ -4360,7 +4380,7 @@ itemDef
 		type ITEM_TYPE_YESNO
 		text "@GM_THIRDPERSON"
 		cvar "cg_thirdperson"
-		rect 300 380 290 12
+		rect 300 395 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
 		textalignx 142
@@ -4378,7 +4398,7 @@ itemDef
 		type ITEM_TYPE_SLIDER
 		text "@GM_THIRDPERSONRANGE"
 		cvarfloat "cg_thirdpersonrange" 40 50 120
-		rect 300 395 290 12
+		rect 300 410 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
 		textalignx 142
@@ -4398,7 +4418,7 @@ itemDef
 		type ITEM_TYPE_YESNO
 		text "@GM_HITMARKERS"
 		cvar "cg_hitMarker"
-		rect 300 410 290 12
+		rect 300 425 290 12
 		textalign ITEM_ALIGN_RIGHT
 		textfont UI_FONT_BIG
 		textalignx 142
