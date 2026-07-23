@@ -352,7 +352,6 @@ void RB_ProjectionShadowDeform( void ) {
 	float h;
 	vec3_t ground;
 	vec3_t light;
-	float groundDist;
 	float d;
 	vec3_t lightDir;
 	float shadowPlaneZ;
@@ -364,12 +363,9 @@ void RB_ProjectionShadowDeform( void ) {
 	ground[2] = backEnd.or.axis[2][2];
 
 	shadowPlaneZ = backEnd.currentEntity->e.shadowPlane;
-	// Prevent planar shadow plane from being positioned above the entity's feet (which causes floating ceiling shadows)
-	if ( shadowPlaneZ > backEnd.or.origin[2] + 4.0f ) {
+	if ( shadowPlaneZ <= 0.0f || shadowPlaneZ > backEnd.or.origin[2] + 4.0f ) {
 		shadowPlaneZ = backEnd.or.origin[2];
 	}
-
-	groundDist = backEnd.or.origin[2] - shadowPlaneZ;
 
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 	d = DotProduct( lightDir, ground );
@@ -385,10 +381,8 @@ void RB_ProjectionShadowDeform( void ) {
 	light[2] = lightDir[2] * d;
 
 	for ( i = 0; i < tess.numVertexes; i++, xyz += 4 ) {
-		h = DotProduct( xyz, ground ) + groundDist;
-		if ( h < 0.0f ) {
-			h = 0.0f; // Prevent upward projection onto ceilings or air
-		}
+		// Calculate precise height of vertex above shadowPlaneZ
+		h = DotProduct( xyz, ground ) - shadowPlaneZ;
 
 		xyz[0] -= light[0] * h;
 		xyz[1] -= light[1] * h;
