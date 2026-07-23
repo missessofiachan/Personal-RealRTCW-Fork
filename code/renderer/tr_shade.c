@@ -1401,10 +1401,21 @@ void RB_StageIteratorGeneric( void ) {
 		qglEnableClientState( GL_COLOR_ARRAY );
 	}
 
+	qboolean isProjectionShadow = ( tess.shader == tr.projectionShadowShader && glConfig.stencilBits >= 4 );
+	if ( isProjectionShadow ) {
+		qglEnable( GL_STENCIL_TEST );
+		qglStencilFunc( GL_EQUAL, 0, 255 );
+		qglStencilOp( GL_KEEP, GL_KEEP, GL_INCR );
+	}
+
 	//
 	// call shader function
 	//
 	RB_IterateStagesGeneric( input );
+
+	if ( isProjectionShadow ) {
+		qglDisable( GL_STENCIL_TEST );
+	}
 
 	//
 	// now do any dynamic lighting needed

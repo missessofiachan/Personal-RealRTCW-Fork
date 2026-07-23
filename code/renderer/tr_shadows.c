@@ -355,6 +355,7 @@ void RB_ProjectionShadowDeform( void ) {
 	float groundDist;
 	float d;
 	vec3_t lightDir;
+	float shadowPlaneZ;
 
 	xyz = ( float * ) tess.xyz;
 
@@ -362,16 +363,22 @@ void RB_ProjectionShadowDeform( void ) {
 	ground[1] = backEnd.or.axis[1][2];
 	ground[2] = backEnd.or.axis[2][2];
 
-	groundDist = backEnd.or.origin[2] - backEnd.currentEntity->e.shadowPlane;
+	shadowPlaneZ = backEnd.currentEntity->e.shadowPlane;
+	// Prevent planar shadow plane from being positioned above the entity's feet (which causes floating ceiling shadows)
+	if ( shadowPlaneZ > backEnd.or.origin[2] + 4.0f ) {
+		shadowPlaneZ = backEnd.or.origin[2];
+	}
+
+	groundDist = backEnd.or.origin[2] - shadowPlaneZ;
 
 	VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 	d = DotProduct( lightDir, ground );
 	// don't let the shadows get too long or go negative
-	if ( d < 0.5 ) {
-		VectorMA( lightDir, ( 0.5 - d ), ground, lightDir );
+	if ( d < 0.5f ) {
+		VectorMA( lightDir, ( 0.5f - d ), ground, lightDir );
 		d = DotProduct( lightDir, ground );
 	}
-	d = 1.0 / d;
+	d = 1.0f / d;
 
 	light[0] = lightDir[0] * d;
 	light[1] = lightDir[1] * d;
@@ -379,6 +386,9 @@ void RB_ProjectionShadowDeform( void ) {
 
 	for ( i = 0; i < tess.numVertexes; i++, xyz += 4 ) {
 		h = DotProduct( xyz, ground ) + groundDist;
+		if ( h < 0.0f ) {
+			h = 0.0f; // Prevent upward projection onto ceilings or air
+		}
 
 		xyz[0] -= light[0] * h;
 		xyz[1] -= light[1] * h;

@@ -3464,7 +3464,7 @@ static void CreateInternalShaders( void ) {
 	stages[0].constantColor[0] = 0;
 	stages[0].constantColor[1] = 0;
 	stages[0].constantColor[2] = 0;
-	stages[0].constantColor[3] = 75; // 30% alpha for smooth, soft shadow blend without harsh overlap lines
+	stages[0].constantColor[3] = 180; // 70% dark alpha for solid, dark shadow silhouette without internal wireframe lines
 	stages[0].rgbGen = CGEN_CONST;
 	stages[0].alphaGen = AGEN_CONST;
 	shader.deforms[0].deformation = DEFORM_PROJECTION_SHADOW;

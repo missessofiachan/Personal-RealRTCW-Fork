@@ -478,10 +478,10 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 			R_AddDrawSurf( (void *)surface, tr.shadowShader, 0, qfalse, tr.currentModel->ATI_tess );
 		}
 
-		// projection shadows work fine with personal models
-		if ( r_shadows->integer >= 2
+		// projection shadows work fine with personal models, lamps, and map props
+		if ( r_shadows->integer >= 1
 			&& fogNum == 0
-			&& (ent->e.renderfx & RF_SHADOW_PLANE )
+			&& !(ent->e.renderfx & RF_DEPTHHACK)
 			&& shader->sort <= SS_BANNER ) {
 			R_AddDrawSurf( (void *)surface, tr.projectionShadowShader, 0, qfalse, tr.currentModel->ATI_tess );
 		}

@@ -30,6 +30,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#include <time.h>
+
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+#	include <execinfo.h>
+#endif
 
 #ifndef DEDICATED
 #ifdef USE_LOCAL_HEADERS
@@ -431,6 +436,87 @@ void Sys_Print( const char *msg )
 Sys_Error
 =================
 */
+const char *Sys_SignalName( int signal ) {
+	switch( signal ) {
+	case SIGSEGV: return "Segmentation Fault (SIGSEGV - Invalid Memory Access)";
+	case SIGFPE:  return "Floating Point Exception (SIGFPE)";
+	case SIGILL:  return "Illegal Instruction (SIGILL)";
+	case SIGABRT: return "Aborted (SIGABRT)";
+#ifdef SIGBUS
+	case SIGBUS:  return "Bus Error (SIGBUS)";
+#endif
+	case SIGTERM: return "Termination Request (SIGTERM)";
+	case SIGINT:  return "Interrupt (SIGINT)";
+#ifdef SIGHUP
+	case SIGHUP:  return "Hangup (SIGHUP)";
+#endif
+#ifdef SIGQUIT
+	case SIGQUIT: return "Quit (SIGQUIT)";
+#endif
+#ifdef SIGTRAP
+	case SIGTRAP: return "Trace Trap (SIGTRAP)";
+#endif
+	default:      return "Unknown Signal";
+	}
+}
+
+void Sys_DumpBacktrace( const char *reason, int signal ) {
+	char logBuf[4096];
+	int offset = 0;
+	time_t now = time( NULL );
+	struct tm *tm_info = localtime( &now );
+	char timeStr[64] = { 0 };
+
+	if ( tm_info ) {
+		strftime( timeStr, sizeof( timeStr ), "%Y-%m-%d %H:%M:%S", tm_info );
+	}
+
+	offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+		"==================================================\n"
+		"REALRTCW CRASH / ERROR LOG - %s\n"
+		"Reason: %s\n",
+		timeStr[0] ? timeStr : "N/A",
+		reason ? reason : "Unknown" );
+
+	if ( signal > 0 ) {
+		offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+			"Signal: %s (Code %d)\n", Sys_SignalName( signal ), signal );
+	}
+
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+	void *callstack[32];
+	int frames = backtrace( callstack, 32 );
+	char **strs = backtrace_symbols( callstack, frames );
+
+	if ( strs && frames > 0 ) {
+		offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+			"\nCallstack / Backtrace (%d frames):\n", frames );
+		for ( int i = 0; i < frames; i++ ) {
+			offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+				"  [%02d] %s\n", i, strs[i] );
+		}
+		free( strs );
+	}
+#endif
+
+	offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+		"==================================================\n" );
+
+	fprintf( stderr, "\n%s\n", logBuf );
+
+	FILE *f = fopen( "crash.log", "a" );
+	if ( f ) {
+		fputs( logBuf, f );
+		fputs( "\n", f );
+		fclose( f );
+	}
+}
+
+/*
+=================
+Sys_Error
+=================
+*/
 void Sys_Error( const char *error, ... )
 {
 	va_list argptr;
@@ -439,6 +525,8 @@ void Sys_Error( const char *error, ... )
 	va_start (argptr,error);
 	Q_vsnprintf (string, sizeof(string), error, argptr);
 	va_end (argptr);
+
+	Sys_DumpBacktrace( string, 0 );
 
 	Sys_ErrorDialog( string );
 
@@ -666,18 +754,33 @@ void Sys_SigHandler( int signal )
 
 	if( signalcaught )
 	{
-		fprintf( stderr, "DOUBLE SIGNAL FAULT: Received signal %d, exiting...\n",
-			signal );
+		fprintf( stderr, "DOUBLE SIGNAL FAULT: Received signal %d (%s), exiting...\n",
+			signal, Sys_SignalName( signal ) );
 	}
 	else
 	{
 		signalcaught = qtrue;
+
+		const char *sigDesc = Sys_SignalName( signal );
+		char crashDialogMsg[2048];
+		snprintf( crashDialogMsg, sizeof( crashDialogMsg ),
+			"RealRTCW Fatal Engine Crash!\n\n"
+			"Signal: %s (%d)\n\n"
+			"A detailed callstack backtrace has been written to crash.log",
+			sigDesc, signal );
+
+		Sys_DumpBacktrace( "Fatal Engine Crash Signal", signal );
+
 		VM_Forced_Unload_Start();
 #ifndef DEDICATED
-		CL_Shutdown(va("Received signal %d", signal), qtrue, qtrue);
+		CL_Shutdown(va("Received signal %d (%s)", signal, sigDesc), qtrue, qtrue);
 #endif
-		SV_Shutdown(va("Received signal %d", signal) );
+		SV_Shutdown(va("Received signal %d (%s)", signal, sigDesc) );
 		VM_Forced_Unload_Done();
+
+		if ( signal != SIGTERM && signal != SIGINT ) {
+			Sys_ErrorDialog( crashDialogMsg );
+		}
 	}
 
 	if( signal == SIGTERM || signal == SIGINT )
