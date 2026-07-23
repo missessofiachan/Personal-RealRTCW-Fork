@@ -773,11 +773,26 @@ static void LerpMeshVertexes_scalar(md3Surface_t *surf, float backlerp)
 	int		vertNum;
 	unsigned lat, lng;
 	int		numVerts = surf->numVerts;
+	int		numFrames = surf->numFrames;
+	int		frame = backEnd.currentEntity ? backEnd.currentEntity->e.frame : 0;
+	int		oldframe = backEnd.currentEntity ? backEnd.currentEntity->e.oldframe : 0;
+
+	if ( numFrames > 0 ) {
+		if ( frame < 0 || frame >= numFrames ) {
+			frame = ( frame % numFrames + numFrames ) % numFrames;
+		}
+		if ( oldframe < 0 || oldframe >= numFrames ) {
+			oldframe = ( oldframe % numFrames + numFrames ) % numFrames;
+		}
+	} else {
+		frame = 0;
+		oldframe = 0;
+	}
 
 	outXyz = tess.xyz[tess.numVertexes];
 	outNormal = tess.normal[tess.numVertexes];
 
-	newXyz = (short *)((byte *)surf + surf->ofsXyzNormals) + (backEnd.currentEntity->e.frame * numVerts * 4);
+	newXyz = (short *)((byte *)surf + surf->ofsXyzNormals) + (frame * numVerts * 4);
 	newNormals = newXyz + 3;
 
 	newXyzScale = MD3_XYZ_SCALE * (1.0f - backlerp);
@@ -804,7 +819,7 @@ static void LerpMeshVertexes_scalar(md3Surface_t *surf, float backlerp)
 			outNormal += 4;
 		}
 	} else {
-		oldXyz = (short *)((byte *)surf + surf->ofsXyzNormals) + (backEnd.currentEntity->e.oldframe * numVerts * 4);
+		oldXyz = (short *)((byte *)surf + surf->ofsXyzNormals) + (oldframe * numVerts * 4);
 		oldNormals = oldXyz + 3;
 
 		oldXyzScale = MD3_XYZ_SCALE * backlerp;
@@ -881,6 +896,10 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 	int Bob, Doug;
 	int numVerts;
 
+	if ( !backEnd.currentEntity ) {
+		return;
+	}
+
 	if ( backEnd.currentEntity->e.reFlags & REFLAG_ONLYHAND ) {
 		if ( !strstr( surface->name, "hand" ) ) {
 			return;
@@ -946,6 +965,21 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 	int     vertNum;
 	unsigned lat, lng;
 	int     numVerts = surf->numVerts;
+	int     numFrames = surf->numCompFrames + surf->numBaseFrames;
+	int     frame = backEnd.currentEntity ? backEnd.currentEntity->e.frame : 0;
+	int     oldframe = backEnd.currentEntity ? backEnd.currentEntity->e.oldframe : 0;
+
+	if ( numFrames > 0 ) {
+		if ( frame < 0 || frame >= numFrames ) {
+			frame = ( frame % numFrames + numFrames ) % numFrames;
+		}
+		if ( oldframe < 0 || oldframe >= numFrames ) {
+			oldframe = ( oldframe % numFrames + numFrames ) % numFrames;
+		}
+	} else {
+		frame = 0;
+		oldframe = 0;
+	}
 
 	int     oldBase, newBase;
 	short   *oldComp = NULL, *newComp = NULL;
@@ -956,13 +990,13 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 	outXyz = tess.xyz[tess.numVertexes];
 	outNormal = tess.normal[tess.numVertexes];
 
-	newBase = (int)*( ( short * )( (byte *)surf + surf->ofsFrameBaseFrames ) + backEnd.currentEntity->e.frame );
+	newBase = (int)*( ( short * )( (byte *)surf + surf->ofsFrameBaseFrames ) + frame );
 	newXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals ) + ( newBase * numVerts * 4 );
 	newNormals = newXyz + 3;
 
 	hasComp = ( surf->numCompFrames > 0 && surf->ofsFrameCompFrames != 0 && surf->ofsXyzCompressed != 0 );
 	if ( hasComp ) {
-		newComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + backEnd.currentEntity->e.frame );
+		newComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + frame );
 		if ( newComp && *newComp >= 0 ) {
 			newXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed ) + ( *newComp * numVerts );
 		}
@@ -1000,12 +1034,12 @@ static void LerpCMeshVertexes( mdcSurface_t *surf, float backlerp ) {
 			}
 		}
 	} else {
-		oldBase = (int)*( ( short * )( (byte *)surf + surf->ofsFrameBaseFrames ) + backEnd.currentEntity->e.oldframe );
+		oldBase = (int)*( ( short * )( (byte *)surf + surf->ofsFrameBaseFrames ) + oldframe );
 		oldXyz = ( short * )( (byte *)surf + surf->ofsXyzNormals ) + ( oldBase * numVerts * 4 );
 		oldNormals = oldXyz + 3;
 
 		if ( hasComp ) {
-			oldComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + backEnd.currentEntity->e.oldframe );
+			oldComp = ( ( short * )( (byte *)surf + surf->ofsFrameCompFrames ) + oldframe );
 			if ( oldComp && *oldComp >= 0 ) {
 				oldXyzComp = ( mdcXyzCompressed_t * )( (byte *)surf + surf->ofsXyzCompressed ) + ( *oldComp * numVerts );
             }
@@ -1074,6 +1108,10 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	int indexes;
 	int Bob, Doug;
 	int numVerts;
+
+	if ( !backEnd.currentEntity ) {
+		return;
+	}
 
 	if ( backEnd.currentEntity->e.reFlags & REFLAG_ONLYHAND ) {
 		if ( !strstr( surface->name, "hand" ) ) {

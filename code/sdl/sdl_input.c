@@ -1151,6 +1151,7 @@ static void IN_ProcessEvents( void )
 				Cbuf_ExecuteText(EXEC_NOW, "quit Closed window\n");
 				break;
 
+			case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED :
 			case SDL_EVENT_WINDOW_RESIZED :
 		    {
 				int width = e.window.data1;

@@ -455,7 +455,7 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu" "gnu")
   FFMPEG_CFLAGS := $(shell pkg-config --cflags libavcodec libavformat libavutil libswscale libswresample)
   FFMPEG_LIBS   := $(shell pkg-config --libs   libavcodec libavformat libavutil libswscale libswresample)
 
-  CFLAGS = $(FFMPEG_CFLAGS)
+  CFLAGS += $(FFMPEG_CFLAGS)
   LIBS  += $(FFMPEG_LIBS)
 
   ifeq ($(USE_MIMALLOC),1)

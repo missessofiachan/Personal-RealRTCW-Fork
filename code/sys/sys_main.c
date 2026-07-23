@@ -20,6 +20,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include <signal.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -34,6 +38,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
 #	include <execinfo.h>
+#	include <dlfcn.h>
 #endif
 
 #ifndef DEDICATED
@@ -459,7 +464,7 @@ const char *Sys_SignalName( int signal ) {
 }
 
 void Sys_DumpBacktrace( const char *reason, int signal ) {
-	char logBuf[4096];
+	char logBuf[8192];
 	int offset = 0;
 	time_t now = time( NULL );
 	struct tm *tm_info = localtime( &now );
@@ -468,6 +473,13 @@ void Sys_DumpBacktrace( const char *reason, int signal ) {
 	if ( tm_info ) {
 		strftime( timeStr, sizeof( timeStr ), "%Y-%m-%d %H:%M:%S", tm_info );
 	}
+
+	const char *mapName = Cvar_VariableString( "mapname" );
+	const char *modeStr = Cvar_VariableString( "r_mode" );
+	int width = Cvar_VariableIntegerValue( "r_customwidth" );
+	int height = Cvar_VariableIntegerValue( "r_customheight" );
+	int unfocused = Cvar_VariableIntegerValue( "com_unfocused" );
+	int minimized = Cvar_VariableIntegerValue( "com_minimized" );
 
 	offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
 		"==================================================\n"
@@ -481,6 +493,14 @@ void Sys_DumpBacktrace( const char *reason, int signal ) {
 			"Signal: %s (Code %d)\n", Sys_SignalName( signal ), signal );
 	}
 
+	offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+		"Telemetry: Map='%s' | Res=%dx%d (mode %s) | Unfocused=%d | Minimized=%d | Uptime=%dms\n",
+		( mapName && mapName[0] ) ? mapName : "none",
+		width, height,
+		( modeStr && modeStr[0] ) ? modeStr : "auto",
+		unfocused, minimized,
+		Sys_Milliseconds() );
+
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
 	void *callstack[32];
 	int frames = backtrace( callstack, 32 );
@@ -490,8 +510,26 @@ void Sys_DumpBacktrace( const char *reason, int signal ) {
 		offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
 			"\nCallstack / Backtrace (%d frames):\n", frames );
 		for ( int i = 0; i < frames; i++ ) {
-			offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
-				"  [%02d] %s\n", i, strs[i] );
+			Dl_info dlinfo;
+			if ( dladdr( callstack[i], &dlinfo ) && dlinfo.dli_sname ) {
+				offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+					"  [%02d] %s (%s + 0x%tx) [%p]\n",
+					i,
+					dlinfo.dli_fname ? dlinfo.dli_fname : strs[i],
+					dlinfo.dli_sname,
+					(char *)callstack[i] - (char *)dlinfo.dli_saddr,
+					callstack[i] );
+			} else if ( dladdr( callstack[i], &dlinfo ) && dlinfo.dli_fname ) {
+				offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+					"  [%02d] %s (+0x%tx) [%p]\n",
+					i,
+					dlinfo.dli_fname,
+					(char *)callstack[i] - (char *)dlinfo.dli_fbase,
+					callstack[i] );
+			} else {
+				offset += snprintf( logBuf + offset, sizeof( logBuf ) - offset,
+					"  [%02d] %s\n", i, strs[i] );
+			}
 		}
 		free( strs );
 	}
@@ -502,11 +540,25 @@ void Sys_DumpBacktrace( const char *reason, int signal ) {
 
 	fprintf( stderr, "\n%s\n", logBuf );
 
+	// Save to working directory crash.log
 	FILE *f = fopen( "crash.log", "a" );
 	if ( f ) {
 		fputs( logBuf, f );
 		fputs( "\n", f );
 		fclose( f );
+	}
+
+	// Save to home directory crashlog.txt if home dir is configured
+	const char *homePath = Cvar_VariableString( "fs_homepath" );
+	if ( homePath && homePath[0] ) {
+		char homeCrashPath[MAX_OSPATH];
+		Com_sprintf( homeCrashPath, sizeof( homeCrashPath ), "%s/main/crashlog.txt", homePath );
+		FILE *fHome = fopen( homeCrashPath, "a" );
+		if ( fHome ) {
+			fputs( logBuf, fHome );
+			fputs( "\n", fHome );
+			fclose( fHome );
+		}
 	}
 }
 
